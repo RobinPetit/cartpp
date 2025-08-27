@@ -1,0 +1,12 @@
+*.txt
+*.json
+*.d
+*.o
+*.so
+obj/
+bin/
+.cache/
+__pycache__/
+
+load_data.py
+*.feather
