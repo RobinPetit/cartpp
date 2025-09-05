@@ -148,7 +148,10 @@ static inline int __GET_NP_TYPE() {
     } else if constexpr(std::is_same_v<T, CART_FLOAT64>) {
         typenum = NPY_FLOAT64;
     } else {
-        static_assert(false, "Unable to convert given type no np.ndarray");
+        static_assert(
+            std::is_same_v<T, CART_FLOAT32> || std::is_same_v<T, CART_FLOAT64>,
+            "Unable to convert given type no np.ndarray"
+        );
     }
     return typenum;
 }
