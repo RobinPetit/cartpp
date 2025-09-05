@@ -5,9 +5,6 @@ from Cython.Build import cythonize
 import numpy
 # import pandas as pd
 
-# np_include_path = "C:/Users/Admin/.conda/envs/PhD_TM/lib/site-packages/numpy/core/include"  # from numpy.get_include()
-pandas_include_path = "C:/Users/Admin/.conda/envs/PhD_TM/lib/site-packages/pandas/_libs/tslibs"  # /package/include"
-
 modules = [
     'pycart'
 ]
@@ -20,11 +17,13 @@ elif _os == 'windows':
     COMPILE_ARGS = ['/std:c++20']
     LINK_ARGS = []
 
+COMPILE_ARGS.extend(['-DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION'])
+
 # Define the extension module
 extensions = [
     Extension(
         name=ext, sources=[ext + '.pyx'],
-        include_dirs=[numpy.get_include(), pandas_include_path, 'src/'],
+        include_dirs=[numpy.get_include(), '../src/'],
         extra_compile_args=COMPILE_ARGS,
         extra_link_args=LINK_ARGS
     )

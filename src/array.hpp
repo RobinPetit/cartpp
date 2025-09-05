@@ -1,9 +1,11 @@
 #ifndef CART_ARRAY_HPP
 #define CART_ARRAY_HPP
 
+#include <cassert>
 #include <concepts>
 #include <cstring>
 #include <functional>
+#include <iostream>
 #include <stdexcept>
 #include <type_traits>
 
@@ -22,6 +24,8 @@ private:
     template <typename VecType>
     struct GenericArrayIterator {
     public:
+        using value_type = T; // For msvc
+
         GenericArrayIterator(VecType* vec):
             vector{vec}, i{0} {
         }
@@ -47,6 +51,10 @@ private:
         VecType* vector;
         size_t i;
     };
+private:
+    explicit Array(std::pair<T*, size_t> args):
+            data{args.first}, n{args.second}, owns_data{true} {
+    }
 public:
     typedef GenericArrayIterator<      T>      ArrayIterator;
     typedef GenericArrayIterator<const T> ConstArrayIterator;
@@ -99,8 +107,8 @@ public:
     void save_to(std::ostream& out, BinaryFormat fmt=BinaryFormat::NATIVE) const {
         switch(fmt) {
         case BinaryFormat::NATIVE:
-            out.write(AS_CONSTCHARPTR(&n), sizeof(n));
-            out.write(AS_CONSTCHARPTR(data), sizeof(T)*n);
+            out.write(AS_CONSTCHARPTR(&n), ssizeof(n));
+            out.write(AS_CONSTCHARPTR(data), ssizeof(T)*n);
             break;
         default:
             throw std::runtime_error("Unknown format");
@@ -109,21 +117,26 @@ public:
 
     static Array<T> load_from(
             std::istream& in, BinaryFormat fmt=BinaryFormat::NATIVE) {
-        decltype(Array<T>::n) n;
+        size_t n;
         char* buffer{nullptr};
         switch(fmt) {
         case BinaryFormat::NATIVE:
-            in.read(AS_CHARPTR(&n), sizeof(n));
+            in.read(AS_CHARPTR(&n), ssizeof(n));
             buffer = new char[n * sizeof(T)];
-            in.read(buffer, sizeof(T)*n);
+            in.read(buffer, ssizeof(T)*static_cast<ssize_t>(n));
             break;
         default:
             throw std::runtime_error("Unknown format");
         }
-        Array<T> ret(static_cast<T*>(
-            static_cast<void*>(buffer)), n, false
+        assert(buffer != nullptr);
+        // DO NOT delete[] buffer since ownership was given to ret
+        // Use of special private constructor giving ownership of the pointer.
+        Array<T> ret(
+            std::make_pair(
+                static_cast<T*>(static_cast<void*>(buffer)),
+                n
+            )
         );
-        delete[] buffer;
         return ret;
     }
 
@@ -206,6 +219,7 @@ protected:
     bool owns_data;
 
     void fill_copy(Array<T>& copy) const {
+        assert(copy.size() == this->size());
         copy.ensure_contiguous();  // Should always be ok, but just to make sure
         for(size_t i{0}; i < size(); ++i)
             copy.data[i] = (*this)[i];
@@ -333,7 +347,7 @@ inline T sum(const Array<T>& array) {
 
 template <typename T, std::floating_point Float=double>
 inline Float mean(const Array<T>& array) {
-    return _typed_sum<Float, T>(array) / array.size();
+    return _typed_sum<Float, T>(array) / static_cast<Float>(array.size());
 }
 
 template <std::floating_point Float>
@@ -343,7 +357,7 @@ inline Float weighted_mean(
     // TODO: ensure array.size() == weights.size()
     for(size_t i{0}; i < array.size(); ++i)
         sum += array[i]*weights[i];
-    return sum / array.size();
+    return sum / static_cast<Float>(array.size());
 }
 
 template <std::floating_point Float, bool value>

@@ -68,13 +68,13 @@ public:
         _p.save_to(outfile);
         _w.save_to(outfile);
         size_t nb_covs{nb_cols};
-        outfile.write(AS_CONSTCHARPTR(&nb_covs), sizeof(nb_covs));
+        outfile.write(AS_CONSTCHARPTR(&nb_covs), ssizeof(nb_covs));
         for(const auto& modalities : _modalities) {
             auto nb_modalities{modalities.size()};
-            outfile.write(AS_CONSTCHARPTR(&nb_modalities), sizeof(nb_modalities));
+            outfile.write(AS_CONSTCHARPTR(&nb_modalities), ssizeof(nb_modalities));
             for(const auto& modality : modalities) {
-                auto mod_size{modality.size()};
-                outfile.write(AS_CONSTCHARPTR(&mod_size), sizeof(mod_size));
+                auto mod_size{static_cast<ssize_t>(modality.size())};
+                outfile.write(AS_CONSTCHARPTR(&mod_size), ssizeof(mod_size));
                 outfile.write(AS_CONSTCHARPTR(modality.data()), mod_size);
             }
         }
@@ -93,14 +93,14 @@ public:
         auto w{decltype(Dataset<Float>::_w)::load_from(infile)};
         decltype(Dataset<Float>::__modalities) modalities;
         size_t nb_covs;
-        infile.read(AS_CHARPTR(&nb_covs), sizeof(nb_covs));
+        infile.read(AS_CHARPTR(&nb_covs), ssizeof(nb_covs));
         modalities.resize(nb_covs);
         for(size_t i{0}; i < nb_covs; ++i) {
             size_t nb_modalities;
-            infile.read(AS_CHARPTR(&nb_modalities), sizeof(nb_modalities));
+            infile.read(AS_CHARPTR(&nb_modalities), ssizeof(nb_modalities));
             for(size_t j{0}; j < nb_modalities; ++j) {
-                size_t mod_size;
-                infile.read(AS_CHARPTR(&mod_size), sizeof(mod_size));
+                ssize_t mod_size;
+                infile.read(AS_CHARPTR(&mod_size), ssizeof(mod_size));
                 modalities[i].emplace_back(mod_size+1, '\0');
                 infile.read(modalities[i].back().data(), mod_size);
             }

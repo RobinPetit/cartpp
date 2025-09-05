@@ -3,9 +3,15 @@
 
 #include <cstddef>
 #include <concepts>
+
+#ifndef _POSIX_C_SOURCE  // Not POSIX-compliant
 #include <iostream>
+typedef std::streamsize ssize_t;
+#endif
 
 namespace Cart {
+
+#define ssizeof(x) static_cast<ssize_t>(sizeof(x))
 
 template <typename Mapper>
 concept SortKey = requires(
@@ -27,7 +33,6 @@ template <typename T>
 static inline const char* AS_CONSTCHARPTR(T* ptr) {
     return static_cast<const char*>(static_cast<const void*>((ptr)));
 }
-
 }  // Cart::
 
 #endif

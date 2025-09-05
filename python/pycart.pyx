@@ -33,144 +33,15 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         size_t interaction_depth
         size_t minobs
 
-cdef extern from * nogil:
-    '''
-#include "dataset.hpp"
-#include "tree.hpp"
-
-template <std::floating_point Float>
-using CartFloat = Cart::Dataset<Float>;
-template <std::floating_point Float>
-using CartSplitChoice = Cart::SplitChoice<Float>;
-template <std::floating_point Float, typename LossType>
-using CartRegressionTree = Cart::Regression::BaseRegressionTree<Float, LossType>;
-
-template <typename Float>
-static inline Cart::Dataset<Float>* _make_dataset(
-        Float* Xptr, Float* yptr, bool* pptr,
-        // bool* cat,
-        std::vector<std::vector<std::string>>&& modalities,
-        size_t n, size_t m) {
-    return new Cart::Dataset<Float>(
-        std::move(Cart::Array<Float>(Xptr, n*m)),
-        std::move(Cart::Array<Float>(yptr, n)),
-        std::move(Cart::Array<bool>(pptr, n)),
-        std::move(modalities)
-        // std::shared_ptr<bool[]>(cat)
-    );
-}
-template <typename Float>
-static inline void _del_dataset(void* ptr) {
-    auto _ptr{static_cast<Cart::Dataset<Float>*>(ptr)};
-    delete _ptr;
-}
-template <typename Float>
-static inline void _save_dataset(void* ptr, const char* path) {
-    static_cast<Cart::Dataset<Float>*>(ptr)->save_to(path);
-}
-template <typename Float>
-static inline bool _is_categorical(void* ptr, size_t j) {
-    return static_cast<Cart::Dataset<Float>*>(ptr)->is_categorical(j);
-}
-
-enum class __FloatingPoint {
-    FLOAT32,
-    FLOAT64
-};
-enum class __Loss {
-    MSE,
-    POISSON_DEVIANCE
-};
-
-typedef float CART_FLOAT32;
-typedef double CART_FLOAT64;
-
-#define NBL(F, L) Cart::Regression::NodeBasedRegressionTree<F, L<F>>
-static inline void CALL_FIT(void* tree, void* dataset,
-                            __FloatingPoint fp, __Loss loss) {
-#define CALL(F, L) static_cast<NBL(F, L)*>(tree)->fit( \
-        *static_cast<Cart::Dataset<F>*>(dataset))
-    if(loss == __Loss::MSE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            CALL(CART_FLOAT32, Cart::Loss::MeanSquaredError);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            CALL(CART_FLOAT64, Cart::Loss::MeanSquaredError);
-        } else {
-            // Unreachable
-        }
-    } else if(loss == __Loss::POISSON_DEVIANCE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            CALL(CART_FLOAT32, Cart::Loss::PoissonDeviance);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            CALL(CART_FLOAT64, Cart::Loss::PoissonDeviance);
-        } else {
-            // Unreachable
-        }
-    } else {
-        // unreachable
-    }
-#undef CALL
-}
-static inline void* CREATE_TREE(Cart::TreeConfig* config,
-                                __FloatingPoint fp, __Loss loss) {
-#define ALLOC(F, L) new NBL(F, L)(*config)
-    void* ret{nullptr};
-    if(loss == __Loss::MSE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            ret = ALLOC(CART_FLOAT32, Cart::Loss::MeanSquaredError);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            ret = ALLOC(CART_FLOAT64, Cart::Loss::MeanSquaredError);
-        } else {
-            // Unreachable
-        }
-    } else if(loss == __Loss::POISSON_DEVIANCE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            ret = ALLOC(CART_FLOAT32, Cart::Loss::PoissonDeviance);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            ret = ALLOC(CART_FLOAT64, Cart::Loss::PoissonDeviance);
-        } else {
-            // Unreachable
-        }
-    } else {
-        // unreachable
-    }
-    return ret;
-#undef ALLOC
-}
-static inline void DELETE_TREE(void* tree, __FloatingPoint fp, __Loss loss) {
-#define DELETE(F, L) delete static_cast<NBL(F, L)*>(tree)
-    if(loss == __Loss::MSE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            DELETE(CART_FLOAT32, Cart::Loss::MeanSquaredError);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            DELETE(CART_FLOAT64, Cart::Loss::MeanSquaredError);
-        } else {
-            // Unreachable
-        }
-    } else if(loss == __Loss::POISSON_DEVIANCE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            DELETE(CART_FLOAT32, Cart::Loss::PoissonDeviance);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            DELETE(CART_FLOAT64, Cart::Loss::PoissonDeviance);
-        } else {
-            // Unreachable
-        }
-    } else {
-        // unreachable
-    }
-#undef DELETE
-}
-#undef NBL
-template <typename T>
-static inline T* __new_array__(size_t n) {
-    return new T[n];
-}
-static size_t CART_DEFAULT{std::numeric_limits<size_t>::max()};
-    '''
+cdef extern from"_pycart.hpp" nogil:
     void* _make_dataset[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
     void _del_dataset[T](void*)
     void _save_dataset[T](void*, const char*)
     bool _is_categorical[T](void*, size_t)
+    np.ndarray __Dataset_get_X[T](const void*)
+    np.ndarray __Dataset_get_y[T](const void*)
+    np.ndarray __Dataset_get_w[T](const void*)
+    np.ndarray __Dataset_get_p[T](const void*)
 
     cdef enum class __FloatingPoint(int):
         FLOAT32,
@@ -184,7 +55,6 @@ static size_t CART_DEFAULT{std::numeric_limits<size_t>::max()};
     void* CREATE_TREE(TreeConfig* config, __FloatingPoint fp, __Loss loss)
     void DELETE_TREE(void* tree, __FloatingPoint fp, __Loss loss)
     # size_t get_nb_splitting_nodes(void*)
-    T* __new_array__[T](size_t n)
     cdef size_t CART_DEFAULT
 
 
@@ -208,10 +78,8 @@ cdef class Dataset:
         _X = self._create_X(X, modalities)
         y = np.ascontiguousarray(y.astype(self.dtype))
         p = np.ascontiguousarray(p.astype(np.uint8))
-        cdef int N = y.shape[0]
-        assert p.shape[0] == N
-        assert _X.shape[0] == N, (N, tuple([_X.shape[0], _X.shape[1]]))
-        cdef int nb_features = _X.shape[1]
+        cdef size_t N = <size_t>(y.shape[0])
+        cdef size_t nb_features = <size_t>(_X.shape[1])
         if self.dtype is np.float32:
             self.ptr = _make_dataset[CART_FLOAT32](
                 <CART_FLOAT32*>(<CART_PTR_T>(_X.ctypes.data)),
@@ -271,6 +139,30 @@ cdef class Dataset:
             return _is_categorical[CART_FLOAT32](self.ptr, j)
         elif self.dtype is np.float64:
             return _is_categorical[CART_FLOAT64](self.ptr, j)
+
+    def get_X(self) -> np.ndarray:
+        if self.dtype is np.float32:
+            return __Dataset_get_X[CART_FLOAT32](self.ptr).T
+        elif self.dtype is np.float64:
+            return __Dataset_get_X[CART_FLOAT64](self.ptr).T
+
+    def get_y(self) -> np.ndarray:
+        if self.dtype is np.float32:
+            return __Dataset_get_y[CART_FLOAT32](self.ptr)
+        elif self.dtype is np.float64:
+            return __Dataset_get_y[CART_FLOAT64](self.ptr)
+
+    def get_p(self) -> np.ndarray:
+        if self.dtype is np.float32:
+            return __Dataset_get_p[CART_FLOAT32](self.ptr)
+        elif self.dtype is np.float64:
+            return __Dataset_get_p[CART_FLOAT64](self.ptr)
+
+    def get_w(self) -> np.ndarray:
+        if self.dtype is np.float32:
+            return __Dataset_get_w[CART_FLOAT32](self.ptr)
+        elif self.dtype is np.float64:
+            return __Dataset_get_w[CART_FLOAT64](self.ptr)
 
 cdef class Config:
     cdef TreeConfig _config

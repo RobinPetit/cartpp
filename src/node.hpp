@@ -37,7 +37,8 @@ public:
                 parent->right_child = nullptr;
         }
         if(data != nullptr) {
-            delete data;
+            if(parent != nullptr)
+                delete data;  // root is not owner of its dataset
             data = nullptr;
         }
     }

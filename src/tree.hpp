@@ -21,9 +21,6 @@ template <
     std::floating_point Float,
     typename LossType
 >
-requires(
-    std::derived_from<LossType, Loss::NodeBasedLoss<Float, LossType>>
-)
 class BaseRegressionTree {
 public:
     BaseRegressionTree(const TreeConfig& config_informations):
@@ -34,6 +31,7 @@ public:
     ~BaseRegressionTree() {
         if(root != nullptr) {
             root->data = nullptr;
+            root->parent = nullptr;  // just to be sure
             delete root;
         }
     }
@@ -64,16 +62,22 @@ public:
                     );
             }
         }
-        if(config.split_type == NodeSelector::DEPTH_FIRST)
-            build_tree<NodeSelector::DEPTH_FIRST>(dataset);
-        else if(config.split_type == NodeSelector::BEST_FIRST)
-            build_tree<NodeSelector::BEST_FIRST>(dataset);
-        else
+        if(config.split_type == NodeSelector::DEPTH_FIRST) {
+            if constexpr(Loss::CanBeDepthFirst<LossType>::value)
+                build_tree<NodeSelector::DEPTH_FIRST>(dataset);
+            else
+                throw std::runtime_error("Cannot be depth first");
+        } else if(config.split_type == NodeSelector::BEST_FIRST) {
+            if constexpr(Loss::CanBeBestFirst<LossType>::value)
+                build_tree<NodeSelector::BEST_FIRST>(dataset);
+            else
+                throw std::runtime_error("Cannot be best first");
+        } else
             throw std::runtime_error("Unknown NodeSelector");
         fitted = true;
         auto end{std::chrono::system_clock::now()};
-        auto elapsed{end-start};
-        std::cout << "Time elapsed: " << std::chrono::duration_cast<std::chrono::nanoseconds>(elapsed)/1e9 << '\n';
+        std::chrono::duration<double> elapsed{end-start};
+        std::cout << "Time elapsed: " << elapsed << "s\n";
         std::cout << nb_splitting_nodes << " nodes\n";
     }
 protected:
@@ -143,6 +147,9 @@ protected:
 };
 
 template <typename Float, typename LossType>
+requires(
+    std::derived_from<LossType, Loss::NodeBasedLoss<Float, LossType>>
+)
 class NodeBasedRegressionTree final : public BaseRegressionTree<Float, LossType> {
 };
 

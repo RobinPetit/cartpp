@@ -3,11 +3,14 @@
 *.d
 *.o
 *.so
+*.pyd
 obj/
 bin/
+build/
 .cache/
 __pycache__/
 *.cpp
 
 load_data.py
 *.feather
+*.cartbin
