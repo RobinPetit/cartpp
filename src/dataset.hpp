@@ -20,21 +20,24 @@ public:
             _X(std::move(other._X)), _y(std::move(other._y)),
             _p(std::move(other._p)), _w(std::move(other._w)),
             __modalities(std::move(other._modalities)),
-            _modalities{__modalities} {
+            _modalities{__modalities},
+            _cache_sorted(std::move(other._cache_sorted)) {
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p, Array<Float>&& w,
                 std::vector<std::vector<std::string>>&& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(std::move(w)),
             __modalities(std::move(modalities)),
-            _modalities{__modalities} {
+            _modalities{__modalities},
+            _cache_sorted() {
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p,
                 std::vector<std::vector<std::string>>&& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(0),
             __modalities(std::move(modalities)),
-            _modalities{__modalities} {
+            _modalities{__modalities},
+            _cache_sorted() {
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p, Array<Float>&& w,
                 std::vector<std::vector<std::string>>& modalities):
@@ -46,10 +49,12 @@ public:
                 std::vector<std::vector<std::string>>& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(0),
-            __modalities(), _modalities{modalities} {
+            __modalities(), _modalities{modalities}, _cache_sorted() {
     }
 
     ~Dataset() = default;
+    Dataset& operator=(const Dataset&) = delete;
+    Dataset& operator=(Dataset&&) = delete;
 
     void save_to(const std::string& path) const {
         std::ofstream outfile(
@@ -81,7 +86,6 @@ public:
     }
 
     static Dataset<Float> load_from(const std::string& path) {
-        std::cout << "Dataset::load_from\n";
         std::ifstream infile(path, std::ios::in | std::ios::binary);
         char buffer[16] = {};
         infile.read(buffer, 16);
@@ -152,16 +156,26 @@ public:
         return _w.size() > 0;
     }
 
-    inline auto sorted_Xypw(size_t j) const {
-        Array<Float> Xj{get_feature_vector(j, false)};
-        auto sorted_indices{argsort(Xj)};
-        return std::make_tuple(
-            std::move(sorted_indices),
-            std::move(Xj[sorted_indices]),
-            std::move(_y[sorted_indices]),
-            std::move(_p[sorted_indices]),
-            (is_weighted() ? _w[sorted_indices] : decltype(_w)())
-        );
+    inline const auto& sorted_Xypw(size_t j) const {
+        if(_cache_sorted.size() <= j) [[unlikely]] {
+            auto& cache{const_cast<Dataset<Float>*>(this)->_cache_sorted};
+            if(cache.size() == 0)
+                cache.reserve(nb_features());
+            assert(cache.size() == j);
+            Array<Float> Xj{get_feature_vector(j, false)};
+            Array<size_t> sorted_indices{argsort(Xj)};
+            cache.emplace_back(
+                std::move(Xj[sorted_indices]),
+                std::move(_y[sorted_indices]),
+                std::move(_p[sorted_indices]),
+                (is_weighted() ? std::move(_w[sorted_indices]) : decltype(_w)()),
+                decltype(sorted_indices)()
+            );
+            // Make sure we don't invalidate sorted_indices
+            std::get<4>(cache.back()) = std::move(sorted_indices);
+        }
+        assert(_cache_sorted.size() > j);
+        return _cache_sorted[j];
     }
 
     inline Dataset<Float>* at(const Array<size_t>& indices) const {
@@ -204,6 +218,16 @@ private:
     Array<Float> _w;
     std::vector<std::vector<std::string>> __modalities;
     std::vector<std::vector<std::string>>& _modalities;
+    std::vector<
+        std::tuple<
+            Array<Float>,   // Xj
+            Array<Float>,   // y
+            Array<bool>,    // p
+            Array<Float>,   // w
+            Array<size_t>   // indices
+        >
+    > _cache_sorted;
+
 
     inline Float* get_feature_vector_ptr(size_t col_idx) {
         _X.ensure_contiguous();

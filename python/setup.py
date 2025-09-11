@@ -3,7 +3,10 @@ import platform
 from setuptools import setup, Extension
 from Cython.Build import cythonize
 import numpy
-# import pandas as pd
+
+from utils import make_cpp_wrapper
+
+make_cpp_wrapper()
 
 modules = [
     'pycart'

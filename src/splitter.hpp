@@ -93,14 +93,10 @@ public:
             const Node<Float>* node, size_t j,
             Float current_loss, SplitChoice<Float>& best_split) {
         auto data{node->data};
-        auto [indices, Xj, y, p, w] = data->sorted_Xypw(j);
+        const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
         if(Xj[0] == Xj[Xj.size()-1])
             return false;
         auto [values, counts] = unique(Xj);
-        std::cout << "Finding best split for covariate " << j << '\n';
-        for(size_t i{0}; i < values.size(); ++i) {
-            std::cout << "  " << counts[i] << " occurrences of " << values[i] << '\n';
-        }
         auto sumcounts{cumsum<size_t>(counts)};
         size_t nb_modalities{counts.size()};
         if(nb_modalities > 64)
@@ -147,7 +143,6 @@ public:
             }
         }
         if(best_dloss > best_split.dloss) {
-            std::cout << "Found a better split w/ dloss " << best_dloss << '\n';
             best_split.valid = true;
             best_split.is_categorical = true;
             best_split.feature_idx = static_cast<int>(j);
@@ -194,7 +189,7 @@ public:
         auto data{node->data};
         if(data->size() <= 2*config.minobs)
             return false;
-        auto [indices, Xj, y, p, w] = data->sorted_Xypw(j);
+        const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
         if(Xj[0] == Xj[Xj.size()-1])
             return false;
         Array<bool> left_mask(data->size(), false);
@@ -325,7 +320,6 @@ public:
             return nullptr;
         Node<Float>* ret{container.top()};
         container.pop();
-        std::cout << "Splitting node(" << ret->id << ") with loss " << ret->loss << '\n';
         auto dloss{[](Node<Float>* n) {
             return n->loss*n->nb_observations -
                 (n->left_child->loss*n->left_child->nb_observations +
@@ -402,11 +396,7 @@ public:
     }
 
     ~Splitter() {
-        while(not container.empty()) {
-            auto node{container.back()};
-            container.pop_back();
-            delete node;
-        }
+        container.clear();
     }
 
     Node<Float>* split() {
@@ -459,17 +449,8 @@ private:
         best_split.dloss = 0;
         best_split.node = nullptr;
         for(auto node : container) {
-            // std::cout << "Looking at node " << node->id << "\n";
             for(size_t j{0}; j < node->data->nb_features(); ++j) {
                 find_best_split(config, node, j, best_split);
-                if(best_split.valid) {
-                    // std::cout << "Current best split is on node "
-                    //     << best_split.node->id  << ", on feature "
-                    //     << best_split.feature_idx << " w/ dloss: " << best_split.dloss;
-                    // std::cout << '\n';
-                    // std::string buffer;
-                    // std::getline(std::cin, buffer);
-                }
             }
         }
         return best_split;
@@ -487,10 +468,11 @@ private:
     void find_best_split_numerical(
             const TreeConfig& config, Node<Float>* node,
             size_t j, SplitChoice<Float>& best_split) {
-        auto data{node->data};
+        const Dataset<Float>* data{node->data};
         if(data->size() <= 2*config.minobs)
             return;
-        auto [indices, Xj, y, p, w] = data->sorted_Xypw(j);
+        const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
+        loss.new_feature(y);
         if(Xj[0] == Xj[Xj.size()-1])
             return;
         Float best_threshold{std::numeric_limits<Float>::infinity()};
@@ -521,7 +503,7 @@ private:
             best_split.is_categorical = false;
             best_split.node = node;
             best_split.threshold = best_threshold;
-            best_split.feature_idx = j;
+            best_split.feature_idx = static_cast<int>(j);
             best_split.dloss = best_dloss;
             best_split.left_data = node->data->at(
                 indices.view(0, best_splitting_idx)

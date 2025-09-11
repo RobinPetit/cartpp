@@ -10,7 +10,14 @@ build/
 .cache/
 __pycache__/
 *.cpp
+*.profile
 
 load_data.py
 *.feather
 *.cartbin
+*.out
+
+.clang-uml
+diagrams/
+
+*.png

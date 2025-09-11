@@ -293,12 +293,24 @@ protected:
 
     virtual void _add_expanded_node(const Node<Float>* node) = 0;
     virtual Float  _evaluate() const = 0;
-    virtual Float  _evaluate(const Node<Float>* node, const Array<Float>& y, size_t idx) const = 0;
-    virtual void _set_root(Node<Float>* node);
+    // For numerical splits
+    virtual Float  _evaluate(
+            const Node<Float>* node, const Array<Float>& y,
+            size_t idx) const = 0;
+    // For categorical splits
+    // virtual Float _evaluate(
+    //         const Node<Float>* node, const Array<Float>& y,
+    //         ) = 0;
+    virtual void _set_root(Node<Float>* node) = 0;
+    virtual void _new_feature(const Array<Float>&) = 0;
 public:
     TreeBasedLoss():
             self{static_cast<LossType&>(*this)} {}
     ~TreeBasedLoss() = default;
+
+    inline void new_feature(const Array<Float>& ys) {
+        self._new_feature(ys);
+    }
 
     inline Float evaluate(
             const Node<Float>* node, const Array<Float>& y, size_t idx) const {
@@ -323,121 +335,230 @@ public:
     }
 };
 
+template <std::floating_point Float>
+using Coord = std::pair<Float, Float>;
+
 template <std::floating_point FloatType, bool allow_crossing=false>
-class LorenzCurve final : public TreeBasedLoss<
+class LorenzCurveError final : public TreeBasedLoss<
                                     FloatType,
-                                    LorenzCurve<FloatType, allow_crossing>
+                                    LorenzCurveError<FloatType, allow_crossing>
                           > {
-    typedef TreeBasedLoss<FloatType, LorenzCurve<FloatType, allow_crossing>> ParentLoss;
+    typedef TreeBasedLoss<FloatType, LorenzCurveError<FloatType, allow_crossing>> ParentLoss;
 public:
     using typename ParentLoss::Float;
-    LorenzCurve(const Dataset<Float>& data): dataset{data}, entries() {
+    LorenzCurveError(const Dataset<Float>& data): dataset{data}, curve() {
     }
 
     struct _Entry {
-        Node<Float>* node;
+        const Node<Float>* node;
         size_t N;
         Float pred;
     };
-    static inline Float _area(const std::vector<_Entry>& vec) {
-        auto lc{__compute_LC(vec)};
-        Float ret{0};
-        Float last_LC{0};
-        Float last_gamma{0};
-        for(auto [gamma, LC_gamma] : lc) {
-            ret += (gamma - last_gamma) * (LC_gamma + last_LC);
-            last_LC = LC_gamma;
-            last_gamma = gamma;
+
+    class LorenzCurve final {
+    public:
+        class Iterator {
+        private:
+            using _BaseIterator = std::vector<_Entry>::const_iterator;
+        public:
+            using difference_type = long;
+            using value_type = Coord<Float>;
+            using pointer = value_type*;
+            using reference = value_type&;
+            using iterator_category = std::input_iterator_tag;
+            Iterator() = delete;
+            Iterator(_BaseIterator iterator, size_t size, Float expected_value):
+                    it{iterator},
+                    n{it->N},
+                    N{size},
+                    LC_gamma{it->pred},
+                    Ey{expected_value} {
+            }
+            inline Iterator& operator++() {
+                ++it;
+                n += it->N;
+                LC_gamma += it->N * it->pred;
+                return *this;
+            }
+            inline Coord<Float> operator*() const {
+                return {
+                    static_cast<Float>(n) / static_cast<Float>(N),
+                    static_cast<Float>(LC_gamma) / static_cast<Float>(Ey*N)
+                };
+            }
+            inline bool operator==(const Iterator& other) const {
+                return it == other.it;
+            }
+        private:
+            _BaseIterator it;
+            size_t n;
+            size_t N;
+            Float LC_gamma;
+            Float Ey;
+        };
+
+        LorenzCurve() = default;
+        LorenzCurve(const Node<Float>* root):
+                quantiles(),
+                N{root->nb_observations},
+                Ey{mean<Float, Float>(root->data->get_y())} {
+            quantiles.emplace_back(nullptr, 0, Float(0.));
+            quantiles.emplace_back(root, N, Ey);
         }
-        return ret / 2;
-    }
+        LorenzCurve(const LorenzCurve& other) = default;
+        LorenzCurve(LorenzCurve&& other) = default;
+
+        inline Float operator()(Float gamma) const {
+            Float last_gamma{0};
+            Float LC_last_gamma{0};
+            for(auto [gamma_i, LC_gamma_i] : *this) {
+                if(gamma <= gamma_i) {
+                    auto dx{gamma_i - last_gamma};
+                    auto dy{LC_gamma_i - LC_last_gamma};
+                    return LC_gamma_i + dy/dx * (gamma - last_gamma);
+                }
+                last_gamma = gamma_i;
+                LC_last_gamma = LC_gamma_i;
+            }
+            // [[unreachable]]
+            return gamma;
+        }
+
+        void split_node(const Node<Float>* node) {
+            auto it{std::find_if(
+                quantiles.begin(),
+                quantiles.end(),
+                [node](const auto& entry) {
+                    return entry.node == node;
+                }
+            )};
+            assert(it != quantiles.end());
+            assert(node->left_child != nullptr);
+            assert(node->right_child != nullptr);
+            *it = {
+                node->left_child,
+                node->left_child->nb_observations,
+                node->left_child->mean_y
+            };
+            quantiles.emplace_back(
+                node->right_child,
+                node->right_child->nb_observations,
+                node->right_child->mean_y
+            );
+            _sort(quantiles);
+        }
+        void split_node(
+                const Node<Float>* node,
+                size_t left, Float pred_left,
+                size_t right, Float pred_right) {
+            auto it{std::find_if(
+                quantiles.begin(),
+                quantiles.end(),
+                [node](const auto& entry) {
+                    return entry.node == node;
+                }
+            )};
+            assert(it != quantiles.end());
+            assert(node->left_child == nullptr);
+            assert(node->right_child == nullptr);
+            *it = {nullptr, left, pred_left};
+            quantiles.emplace_back(nullptr, right, pred_right);
+            _sort(quantiles);
+        }
+        inline Iterator begin() const {
+            return Iterator(quantiles.begin(), N, Ey);
+        }
+        inline Iterator end() const {
+            return Iterator(quantiles.end(), N, Ey);
+        }
+        operator std::vector<Coord<Float>>() const {
+            return std::vector<Coord<Float>>(begin(), end());
+        }
+        inline Float area() const {
+            Float ret{0};
+            Float last_LC{0};
+            Float last_gamma{0};
+            for(auto [gamma, LC_gamma] : *this) {
+                ret += (gamma - last_gamma) * (LC_gamma + last_LC);
+                last_LC = LC_gamma;
+                last_gamma = gamma;
+            }
+            return .5 * ret;
+        }
+
+        // TODO: optimize this: profile says we spend ~80% of the time in crosses
+        inline bool crosses(const LorenzCurve& other, Float eps=1e-8) {
+            for(auto [gamma, LC_gamma] : *this)
+                if(LC_gamma > other(gamma) + eps)
+                    return true;
+            return false;
+        }
+    private:
+        std::vector<_Entry> quantiles;
+        size_t N;
+        Float Ey;
+
+        static inline void _sort(std::vector<_Entry>& array) {
+            std::sort(
+                array.begin(), array.end(),
+                [](const auto& a, const auto& b) -> bool {
+                    return a.pred < b.pred;
+                }
+            );
+        }
+    };
 protected:
-    friend class TreeBasedLoss<Float, LorenzCurve<Float, allow_crossing>>;
+    friend class TreeBasedLoss<Float, LorenzCurveError<Float, allow_crossing>>;
     using ParentLoss::self;
 
-    static auto __compute_LC(const std::vector<_Entry>& vec) {
-        size_t tot_N{0};
-        for(auto [_, N, y] : vec)
-            tot_N += N;
-        std::vector<std::pair<Float, Float>> lc;
-        lc.emplace_back(0, 0);
-        size_t cumsum_N{0};
-        for(auto [_, N, pi] : vec) {
-            cumsum_N += N;
-            auto gamma{cumsum_N / static_cast<Float>(tot_N)};
-            lc.emplace_back(gamma, lc.back().second + (gamma - lc.back().first)*pi);
-        }
-        for(auto& pair : lc)
-            pair.second /= lc.back().second;
-        return lc;
-    }
-
     const Dataset<Float>& dataset;
-    std::vector<_Entry> entries;
 
+    Float left_sum{0};
+    Float right_sum{0};
+    size_t last_idx{0};
 
+    LorenzCurve curve;
+
+    static inline Float _evaluate(const LorenzCurve& curve) {
+        return static_cast<Float>(.5) - curve.area();
+    }
     inline Float _evaluate() const override final {
-        return .5 - _area(entries);
+        return _evaluate(curve);
     }
 
-    virtual inline void _set_root(Node<Float>* node) override final {
-        _add_node(node);
+    inline void _set_root(Node<Float>* node) override final {
+        new(&curve) LorenzCurve(node);
     }
 
-    inline auto _find_it(const Node<Float>* node) const {
-        return _find_it(node, entries);
-    }
-    inline auto _find_it(
-            const Node<Float>* node, const std::vector<_Entry>& array) const {
-        return std::find_if(
-            array.begin(), array.end(),
-            [node](const auto& entry) {
-                return entry.node == node;
-            }
-        );
-    }
-    inline size_t _find_idx(const Node<Float>* node) const {
-        auto it{_find_it(node)};
-        assert(it != entries.end());
-        return it - entries.begin();
-    }
-
-    inline void _add_node(Node<Float>* node) {
-        entries.emplace_back(node, node->nb_observations, node->mean_y);
-    }
     virtual inline void _add_expanded_node(const Node<Float>* node) override final {
-        auto idx{_find_idx(node)};
-        entries[idx] = {
-            node->left_child, node->left_child->nb_observations,
-            node->left_child->mean_y
-        };
-        entries.emplace_back(
-            node->right_child, node->right_child->nb_observations,
-            node->right_child->mean_y
-        );
-        _sort(entries);
+        curve.split_node(node);
+    }
+
+    virtual inline void _new_feature(const Array<Float>& ys) override final {
+        left_sum = 0;
+        right_sum = sum(ys);
+        last_idx = 0;
     }
 
     virtual inline Float _evaluate(
             const Node<Float>* node, const Array<Float>& y,
             size_t idx) const override final {
-        std::vector<_Entry> tmp_entries(entries);
-        if(tmp_entries.size() > 0) {
-            auto it{_find_it(node, tmp_entries)};
-            assert(it != tmp_entries.end());
-            tmp_entries.erase(it);
-        }
-        auto yleft{y.view(0, idx)};
-        auto yright{y.view(idx, y.size())};
-        tmp_entries.emplace_back(nullptr, idx, mean(yleft));
-        tmp_entries.emplace_back(nullptr, y.size()-idx, mean(yright));
-        _sort(tmp_entries);
+        LorenzCurve splitted_curve(curve);
+        auto diff{sum(y.view(last_idx, idx))};
+        auto _this{const_cast<LorenzCurveError<Float, allow_crossing>*>(this)};
+        _this->last_idx = idx;
+        _this->left_sum += diff;
+        _this->right_sum -= diff;
+        splitted_curve.split_node(
+            node,
+            idx, left_sum / idx,
+            y.size() - idx, right_sum / (y.size() - idx)
+        );
         if constexpr(not allow_crossing) {
-            bool verbose{false};
-            if(crosses(tmp_entries, verbose))
+            if(splitted_curve.crosses(curve))
                 return -std::numeric_limits<Float>::infinity();
         }
-        return .5 - _area(tmp_entries);
+        return _evaluate(splitted_curve);
     }
 
     static inline void _sort(std::vector<_Entry>& vec) {
@@ -471,19 +592,22 @@ protected:
                 last_LC = LC_gamma_i;
             }
         }
-    }
-
-    inline bool crosses(const std::vector<_Entry>& vec, bool verbose=false) const {
-        auto new_lc{__compute_LC(vec)};
-        auto curr_lc{__compute_LC(entries)};
-        for(auto [gamma, LC_gamma] : new_lc) {
-            if(_evaluate_lc(curr_lc, gamma) < LC_gamma - 1e-8)
-                return true;
-        }
-        return false;
-        // TODO: optimize
+        // [[unreachable]]
+        return gamma;
     }
 };
+
+template <std::floating_point Float>
+static inline auto _consecutive_lcs(const std::vector<Node<Float>*>& nodes) {
+    typename LorenzCurveError<Float>::LorenzCurve lc(nodes.front());
+    std::vector<std::vector<Coord<Float>>> ret;
+    ret.emplace_back(lc);
+    for(const Node<Float>* node : nodes) {
+        lc.split_node(node);
+        ret.push_back(lc);
+    }
+    return ret;
+}
 
 template <typename LossType, typename Float=typename LossType::Float>
 concept _NodeBasedLoss = requires {

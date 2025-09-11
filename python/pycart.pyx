@@ -33,7 +33,7 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         size_t interaction_depth
         size_t minobs
 
-cdef extern from"_pycart.hpp" nogil:
+cdef extern from "_pycart.hpp" nogil:
     void* _make_dataset[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
     void _del_dataset[T](void*)
     void _save_dataset[T](void*, const char*)
@@ -49,13 +49,32 @@ cdef extern from"_pycart.hpp" nogil:
 
     cdef enum class __Loss(int):
         MSE,
-        POISSON_DEVIANCE
+        POISSON_DEVIANCE,
+        LORENZ
 
-    void CALL_FIT(void* tree, void* dataset, __FloatingPoint fp, __Loss loss)
-    void* CREATE_TREE(TreeConfig* config, __FloatingPoint fp, __Loss loss)
-    void DELETE_TREE(void* tree, __FloatingPoint fp, __Loss loss)
-    # size_t get_nb_splitting_nodes(void*)
+    void CALL_FIT_TREE(
+            void* tree, void* dataset,
+            __FloatingPoint fp, __Loss loss
+    )
+    void CALL_PREDICT_TREE(
+            const void* tree, void* X, void* out, int n, int nb_dim,
+            __FloatingPoint fp, __Loss loss
+    )
+    void CALL_CREATE_TREE(
+            void** tree, TreeConfig* config,
+            __FloatingPoint fp, __Loss loss
+    )
+    void CALL_DELETE_TREE(
+            void* tree,
+            __FloatingPoint fp, __Loss loss
+    )
+    void CALL_GET_NB_INTERNAL_NODES_TREE(
+            void* tree, size_t* size,
+            __FloatingPoint fp, __Loss loss
+    )
     cdef size_t CART_DEFAULT
+
+    void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
 
 
 # TODO: make sure that sizeof(CART_FLOAT32) == 4 and sizeof(CART_FLOAT64) == 8
@@ -170,7 +189,7 @@ cdef class Config:
     cdef type dtype
     cdef __FloatingPoint _fp
 
-    AVAILABLE_LOSSES = ['mse', 'poisson']
+    AVAILABLE_LOSSES = ['mse', 'poisson', 'lorenz']
 
     def __init__(self, str loss, type dtype=np.float32, bool exact_splits=True,
                  str split_type='best', size_t max_depth=CART_DEFAULT,
@@ -182,6 +201,8 @@ cdef class Config:
             self._loss = __Loss.MSE
         elif _loss == 'poisson':
             self._loss = __Loss.POISSON_DEVIANCE
+        elif _loss == 'lorenz':
+            self._loss = __Loss.LORENZ
         else:
             raise ValueError()
         self.dtype = dtype
@@ -208,14 +229,56 @@ cdef class RegressionTree:
     def __init__(self, config):
         self._tree = NULL
         self.config = config
-        self._tree = CREATE_TREE(
-            &self.config._config, self.config._fp, self.config._loss
+        CALL_CREATE_TREE(
+            &self._tree, &self.config._config, self.config._fp, self.config._loss
         )
         assert self._tree != NULL
 
     def __dealloc__(self):
-        DELETE_TREE(self._tree, self.config._fp, self.config._loss)
+        CALL_DELETE_TREE(self._tree, self.config._fp, self.config._loss)
 
     def fit(self, Dataset dataset):
         assert dataset.dtype == self.config.dtype
-        CALL_FIT(self._tree, dataset.ptr, self.config._fp, self.config._loss)
+        CALL_FIT_TREE(self._tree, dataset.ptr, self.config._fp, self.config._loss)
+
+    def predict(self, np.ndarray X) -> np.ndarray:
+        if X.ndim == 1:
+            X = X.reshape(1, -1)
+        cdef np.float32_t[:] _ret_32
+        cdef np.float64_t[:] _ret_64
+        cdef int n = <int>(X.shape[0])
+        cdef int nb_dim = <int>(X.shape[1])
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            _ret_32 = np.empty(n, dtype=np.float32)
+            CALL_PREDICT_TREE(
+                self._tree,
+                <void*><long long>(X.ctypes.data), &_ret_32[0], n, nb_dim,
+                self.config._fp, self.config._loss,
+            )
+            return np.asarray(_ret_32)
+        else:
+            _ret_64 = np.empty(n, dtype=np.float64)
+            CALL_PREDICT_TREE(
+                self._tree,
+                <void*><long long>(X.ctypes.data), &_ret_64[0], n, nb_dim,
+                self.config._fp, self.config._loss,
+            )
+            return np.asarray(_ret_64)
+        raise ValueError()
+
+    def get_nb_internal_nodes(self) -> int:
+        cdef size_t ret
+        CALL_GET_NB_INTERNAL_NODES_TREE(
+            self._tree, &ret,
+            self.config._fp, self.config._loss
+        )
+        return ret
+
+    def get_lorenz_curves(self) -> np.ndarray:
+        n = self.get_nb_internal_nodes()
+        cdef np.float64_t[:] ret = np.empty((n+1)*(n+4), dtype=np.float64)
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            _extract_lorenz_curves[CART_FLOAT32](self._tree, &ret[0])
+        else:
+            _extract_lorenz_curves[CART_FLOAT64](self._tree, &ret[0])
+        return np.asarray(ret)

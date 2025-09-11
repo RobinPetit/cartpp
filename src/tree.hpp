@@ -14,8 +14,6 @@
 #include "splitter.hpp"
 
 namespace Cart {
-
-
 namespace Regression {
 template <
     std::floating_point Float,
@@ -23,10 +21,11 @@ template <
 >
 class BaseRegressionTree {
 public:
+    static_assert(std::is_same_v<Float, typename LossType::Float>);
     BaseRegressionTree(const TreeConfig& config_informations):
             config{config_informations}, // data{nullptr},
             nb_splitting_nodes{0},
-            root{nullptr}, fitted{false}, prop_root_p0{0.} {
+            root{nullptr}, fitted{false}, prop_root_p0{0.}, nodes() {
     }
     ~BaseRegressionTree() {
         if(root != nullptr) {
@@ -44,7 +43,6 @@ public:
         auto start{std::chrono::system_clock::now()};
         // data = dataset;
         // TODO: bootstraping
-        // std::cout << "fit()\n";
         if(dataset.is_weighted())
             prop_root_p0 = weighted_prop_false(dataset.get_p(), dataset.get_w());
         else
@@ -77,16 +75,51 @@ public:
         fitted = true;
         auto end{std::chrono::system_clock::now()};
         std::chrono::duration<double> elapsed{end-start};
-        std::cout << "Time elapsed: " << elapsed << "s\n";
+        std::cout << "Time elapsed: " << elapsed << "\n";
         std::cout << nb_splitting_nodes << " nodes\n";
+    }
+
+    Array<Float> predict(const Array<Float>& X) const {
+        size_t nb_features{root->data->nb_features()};
+        Array<Float> ret(X.size() / nb_features);
+        predict(X, ret);
+        return ret;
+    }
+
+    void predict(const Array<Float>& X, Array<Float>& out) const {
+        size_t nb_features{root->data->nb_features()};
+        size_t n{out.size()};
+        assert(n * nb_features == X.size());
+        for(size_t i{0}; i < n; ++i) {
+            _predict(X.view(i*nb_features, (i+1)*nb_features), out[i]);
+        }
+    }
+
+    inline void _predict(const Array<Float> x, Float& ret) const {
+        Node<Float>* node{root};
+        while(not node->is_leaf()) {
+            auto j{node->feature_idx};
+            assert(not root->data->is_categorical(j));  // TODO
+            if(x[j] < node->threshold)
+                node = node->left_child;
+            else
+                node = node->right_child;
+        }
+        ret = node->mean_y;
+    }
+
+    const std::vector<Node<Float>*>& get_internal_nodes() const {
+        std::cout << "Returning a vector of size " << nodes.size() << "\n";
+        return nodes;
     }
 protected:
     const TreeConfig& config;
-    // std::shared_ptr<const Dataset<Float>> data;
     size_t nb_splitting_nodes;
     Node<Float>* root;
     bool fitted;
     Float prop_root_p0;
+
+    std::vector<Node<Float>*> nodes;
 
     Float compute_loss(const Array<Float>& y) const {
         LossType loss;
@@ -103,16 +136,13 @@ protected:
     template <NodeSelector selector>
     void build_tree(const Dataset<Float>& dataset) {
         Splitter<Float, LossType, selector> splitter(dataset, config);
-        // ...
         do {
             Node<Float>* node{splitter.split()};
-            if(node == nullptr) {
-                // std::cout << "EARLY STOP\n";
+            if(node == nullptr)
                 break;
-            }
-            for(size_t _{0}; _ <= node->depth; ++_)
-                std::cout << "  ";
-            std::cout << "Node (" << node->id << "), Depth: " << node->depth
+            nodes.push_back(node);
+            std::cout << std::string(3*node->depth, ' ')
+                      << "Node (" << node->id << "), Depth: " << node->depth
                       << ", Feature: " << node->feature_idx
                       << ", Threshold: " << node->threshold
                       << ", DLoss: " << std::setprecision(15) << node->dloss
@@ -152,17 +182,6 @@ requires(
 )
 class NodeBasedRegressionTree final : public BaseRegressionTree<Float, LossType> {
 };
-
-// template <typename Float>
-// class TreeBasedRegressionTree final : public BaseRegressionTree<Float> {
-// public:
-//     TreeBasedRegressionTree(const TreeConfig& config_informations):
-//             BaseRegressionTree<Float>(config_informations) {
-//         // TODO: complete
-//     }
-//
-// private:
-// };
 
 }  // Cart::Regression::
 }  // Cart::

@@ -3,6 +3,7 @@ from pycart import Dataset
 import numpy as np
 from load_data import load_dataset
 
+
 def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
               ignore_categorical: bool = False,
               reduce_modalities: bool = False,
@@ -39,11 +40,15 @@ def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
             isinstance(X_train[0, j], str) for j in range(X_train.shape[1])
         ])
         X_train = X_train[:, ~categorical]
+        X_test = X_test[:, ~categorical]
     else:
         if reduce_modalities:
             # Just to reduce the number of modalities for exact split  #
             values, counts = np.unique(X_train[:, 2], return_counts=True)
-            values, counts = zip(*sorted(list(zip(values, counts)), key=lambda e: e[1]))
+            values, counts = zip(*sorted(
+                list(zip(values, counts)),
+                key=lambda e: e[1])
+            )
             cdf = np.cumsum(counts) * 100 / X_train.shape[0]
             idx = np.where(cdf >= 5.)[0][0]
             indices = np.zeros(X_train.shape[0], dtype=bool)
@@ -53,5 +58,6 @@ def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
             y_train = y_train[indices]
             p_train = p_train[indices]
 
-    print(X_train)
-    return Dataset(X_train, y_train, p_train, dtype=dtype)
+    ret_train = Dataset(X_train, y_train, p_train, dtype=dtype)
+    ret_test = Dataset(X_test, y_test, p_test, dtype=dtype)
+    return (ret_train, ret_test)

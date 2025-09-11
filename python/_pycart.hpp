@@ -1,7 +1,9 @@
 #ifndef __PYCART__
 #define __PYCART__
 
+#include "config.hpp"
 #include "dataset.hpp"
+#include "loss.hpp"
 #include "numpy/ndarraytypes.h"
 #include "numpy/npy_common.h"
 #include "tree.hpp"
@@ -14,7 +16,8 @@ enum class __FloatingPoint {
 };
 enum class __Loss {
     MSE,
-    POISSON_DEVIANCE
+    POISSON_DEVIANCE,
+    LORENZ
 };
 
 template <std::floating_point Float>
@@ -53,84 +56,7 @@ static inline bool _is_categorical(void* ptr, size_t j) {
 typedef float CART_FLOAT32;
 typedef double CART_FLOAT64;
 
-#define NBT(F, L) Cart::Regression::NodeBasedRegressionTree<F, L<F>>
-
-static inline void CALL_FIT(void* tree, void* dataset,
-                            __FloatingPoint fp, __Loss loss) {
-#define CALL(F, L) static_cast<NBT(F, L)*>(tree)->fit( \
-        *static_cast<Cart::Dataset<F>*>(dataset))
-    if(loss == __Loss::MSE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            CALL(CART_FLOAT32, Cart::Loss::MeanSquaredError);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            CALL(CART_FLOAT64, Cart::Loss::MeanSquaredError);
-        } else {
-            // Unreachable
-        }
-    } else if(loss == __Loss::POISSON_DEVIANCE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            CALL(CART_FLOAT32, Cart::Loss::PoissonDeviance);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            CALL(CART_FLOAT64, Cart::Loss::PoissonDeviance);
-        } else {
-            // Unreachable
-        }
-    } else {
-        // unreachable
-    }
-#undef CALL
-}
-static inline void* CREATE_TREE(Cart::TreeConfig* config,
-                                __FloatingPoint fp, __Loss loss) {
-#define ALLOC(F, L) new NBT(F, L)(*config)
-    void* ret{nullptr};
-    if(loss == __Loss::MSE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            ret = ALLOC(CART_FLOAT32, Cart::Loss::MeanSquaredError);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            ret = ALLOC(CART_FLOAT64, Cart::Loss::MeanSquaredError);
-        } else {
-            // Unreachable
-        }
-    } else if(loss == __Loss::POISSON_DEVIANCE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            ret = ALLOC(CART_FLOAT32, Cart::Loss::PoissonDeviance);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            ret = ALLOC(CART_FLOAT64, Cart::Loss::PoissonDeviance);
-        } else {
-            // Unreachable
-        }
-    } else {
-        // unreachable
-    }
-    return ret;
-#undef ALLOC
-}
-static inline void DELETE_TREE(void* tree, __FloatingPoint fp, __Loss loss) {
-#define DELETE(F, L) delete static_cast<NBT(F, L)*>(tree)
-    if(loss == __Loss::MSE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            DELETE(CART_FLOAT32, Cart::Loss::MeanSquaredError);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            DELETE(CART_FLOAT64, Cart::Loss::MeanSquaredError);
-        } else {
-            // Unreachable
-        }
-    } else if(loss == __Loss::POISSON_DEVIANCE) {
-        if(fp == __FloatingPoint::FLOAT32) {
-            DELETE(CART_FLOAT32, Cart::Loss::PoissonDeviance);
-        } else if(fp == __FloatingPoint::FLOAT64) {
-            DELETE(CART_FLOAT64, Cart::Loss::PoissonDeviance);
-        } else {
-            // Unreachable
-        }
-    } else {
-        // unreachable
-    }
-#undef DELETE
-}
-#undef NBT
-
+#include "__pycart_calls.hpp"
 static size_t CART_DEFAULT{std::numeric_limits<size_t>::max()};
 
 /* Numpy array as Cart::Array view */
@@ -208,5 +134,18 @@ static inline PyObject* __Dataset_get_X(const void* ptr) {
 _DEFINE_DATASET_GET_(y)
 _DEFINE_DATASET_GET_(p)
 _DEFINE_DATASET_GET_(w)
+
+    template <std::floating_point Float>
+    static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
+        size_t i{0};
+        auto tree{static_cast<Cart::Regression::BaseRegressionTree<Float, Cart::Loss::LorenzCurveError<Float>>*>(_tree)};
+        auto lcs{Cart::Loss::_consecutive_lcs(tree->get_internal_nodes())};
+        for(auto const& lc : lcs) {
+            for(auto [gamma, LC_gamma] : lc) {
+                out[i++] = static_cast<CART_FLOAT64>(gamma);
+                out[i++] = static_cast<CART_FLOAT64>(LC_gamma);
+            }
+        }
+    }
 
 #endif

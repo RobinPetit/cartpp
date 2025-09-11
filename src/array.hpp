@@ -93,7 +93,14 @@ public:
         owns_data = false;
     }
     Array& operator=(const Array<T>&) = delete;
-    Array& operator=(Array<T>&&) = delete;
+    Array& operator=(Array<T>&& other) {
+        data = other.data;
+        n = other.n;
+        owns_data = other.owns_data;
+        other.data = nullptr;
+        other.owns_data = false;
+        return *this;
+    }
     inline Array<std::remove_const_t<T>> copy() const {
         Array<std::remove_const_t<T>> ret(n);
         fill_copy(ret);
@@ -173,9 +180,6 @@ public:
     Array<T> operator[](const Array<size_t>& indices) const {
         Array<T> ret(indices.size());
         for(size_t i{0}; i < indices.size(); ++i) {
-            if(indices[i] >= size()) {
-                std::cout << indices[i] << " vs " << size() << '\n';
-            }
             ret[i] = (*this)[indices[i]];
         }
         return ret;
