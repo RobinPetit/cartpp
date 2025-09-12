@@ -7,14 +7,19 @@ import numpy as np
 
 DTYPE = np.float64
 
+
 def area(xs, ys):
     return np.trapz(ys, xs)
 
-dataset, test = load_data(DTYPE, ignore_categorical=True, nb_obs=1000000)
+
+dataset, test = load_data(
+    DTYPE, ignore_categorical=False,
+    reduce_modalities=True, nb_obs=20_000
+)
 
 config = Config(
-    loss='lorenz', interaction_depth=201, split_type='best',
-    minobs=100, dtype=DTYPE,
+    loss='lorenz', interaction_depth=21, split_type='best',
+    minobs=10, dtype=DTYPE,
 )
 tree = RegressionTree(config)
 tree.fit(dataset)

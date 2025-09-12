@@ -2,6 +2,7 @@
 #define CART_NODE_HPP
 
 #include <cstddef>
+#include <cstdint>
 
 #include "array.hpp"
 #include "dataset.hpp"
@@ -63,6 +64,9 @@ public:
     Float loss, dloss;
     Float threshold;
     Float mean_y;
+
+    uint64_t left_modalities{0};
+    uint64_t right_modalities{0};
 
     const Dataset<Float>* data;
 };

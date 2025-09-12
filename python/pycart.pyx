@@ -128,6 +128,7 @@ cdef class Dataset:
 
     cdef np.ndarray _create_X(self, np.ndarray[object, ndim=2] X,
                               vector[vector[string]]& modalities):
+        X = np.ascontiguousarray(X)
         cdef np.ndarray _X = -np.ones_like(X, dtype=self.dtype, order='F')
         for j in range(X.shape[1]):
             x = X[:, j]

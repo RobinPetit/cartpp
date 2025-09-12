@@ -99,11 +99,20 @@ public:
         Node<Float>* node{root};
         while(not node->is_leaf()) {
             auto j{node->feature_idx};
-            assert(not root->data->is_categorical(j));  // TODO
-            if(x[j] < node->threshold)
-                node = node->left_child;
-            else
-                node = node->right_child;
+            if(root->data->is_categorical(j)) {
+                auto modality{static_cast<int>(x[j])};
+                if(node->left_modalities & modality)
+                    node = node->left_child;
+                else if(node->right_modalities & modality)
+                    node = node->right_child;
+                else
+                    break;
+            } else {
+                if(x[j] < node->threshold)
+                    node = node->left_child;
+                else
+                    node = node->right_child;
+            }
         }
         ret = node->mean_y;
     }

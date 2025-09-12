@@ -161,16 +161,20 @@ public:
             auto& cache{const_cast<Dataset<Float>*>(this)->_cache_sorted};
             if(cache.size() == 0)
                 cache.reserve(nb_features());
-            assert(cache.size() == j);
+            cache.resize(j+1);
+            if(cache.size() != j+1) {
+                std::cout << "Problem: " << cache.size() << " vs " << j << '\n';
+            }
+            assert(cache.size() == j+1);
             Array<Float> Xj{get_feature_vector(j, false)};
             Array<size_t> sorted_indices{argsort(Xj)};
-            cache.emplace_back(
+            cache[j] = {
                 std::move(Xj[sorted_indices]),
                 std::move(_y[sorted_indices]),
                 std::move(_p[sorted_indices]),
                 (is_weighted() ? std::move(_w[sorted_indices]) : decltype(_w)()),
                 decltype(sorted_indices)()
-            );
+            };
             // Make sure we don't invalidate sorted_indices
             std::get<4>(cache.back()) = std::move(sorted_indices);
         }

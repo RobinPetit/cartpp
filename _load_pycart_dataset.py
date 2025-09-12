@@ -50,7 +50,7 @@ def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
                 key=lambda e: e[1])
             )
             cdf = np.cumsum(counts) * 100 / X_train.shape[0]
-            idx = np.where(cdf >= 5.)[0][0]
+            idx = np.where(cdf >= 8.)[0][0]
             indices = np.zeros(X_train.shape[0], dtype=bool)
             for i in range(idx, len(values)):
                 indices[X_train[:, 2] == values[i]] = True

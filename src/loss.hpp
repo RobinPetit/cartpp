@@ -6,6 +6,7 @@
 #include <cmath>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 
 #include "array.hpp"
@@ -17,7 +18,8 @@ namespace Loss {
 // A whole bunch of Curiously Recurring Template Pattern for static polymorphism.
 // (c.f. https://en.cppreference.com/w/cpp/language/crtp.html)
 // Also the syntax is wordy but we need to be C++-20 compliant
-// (let's hope this compiles on MSVC++ at some point in time...)
+// ~(let's hope this compiles on MSVC++ at some point in time...)~
+// IT DOES! Who knew? Way to go Bill
 
 template <std::floating_point FloatType, class LossType>
 class NodeBasedLoss {
@@ -292,29 +294,37 @@ protected:
     LossType& self;
 
     virtual void _add_expanded_node(const Node<Float>* node) = 0;
-    virtual Float  _evaluate() const = 0;
+    virtual Float  _evaluate() const = 0;  // TODO: remove?
     // For numerical splits
-    virtual Float  _evaluate(
-            const Node<Float>* node, const Array<Float>& y,
-            size_t idx) const = 0;
+    virtual Float  _evaluate(const Array<Float>& y, size_t idx) const = 0;
     // For categorical splits
-    // virtual Float _evaluate(
-    //         const Node<Float>* node, const Array<Float>& y,
-    //         ) = 0;
+    virtual Float _evaluate(uint64_t mask) = 0;
+    virtual Float _evaluate(uint64_t mask,
+            std::tuple<size_t, Float, size_t, Float>&) = 0;
     virtual void _set_root(Node<Float>* node) = 0;
-    virtual void _new_feature(const Array<Float>&) = 0;
+    virtual void _new_node(const Node<Float>* node) = 0;
+    virtual void _new_feature(size_t j) = 0;
 public:
     TreeBasedLoss():
             self{static_cast<LossType&>(*this)} {}
     ~TreeBasedLoss() = default;
 
-    inline void new_feature(const Array<Float>& ys) {
-        self._new_feature(ys);
+    inline void new_node(const Node<Float>* node) {
+        self._new_node(node);
+    }
+    inline void new_feature(size_t j) {
+        self._new_feature(j);
     }
 
+    inline Float evaluate(const Array<Float>& y, size_t idx) const {
+        return self._evaluate(y, idx);
+    }
+    inline Float evaluate(uint64_t mask) const {
+        return self._evaluate(mask);
+    }
     inline Float evaluate(
-            const Node<Float>* node, const Array<Float>& y, size_t idx) const {
-        return self._evaluate(node, y, idx);
+            uint64_t mask, std::tuple<size_t, Float, size_t, Float>& res) const {
+        return self._evaluate(mask, res);
     }
     inline Float evaluate() {
         return self._evaluate();
@@ -338,7 +348,7 @@ public:
 template <std::floating_point Float>
 using Coord = std::pair<Float, Float>;
 
-template <std::floating_point FloatType, bool allow_crossing=false>
+template <std::floating_point FloatType, bool allow_crossing=true>
 class LorenzCurveError final : public TreeBasedLoss<
                                     FloatType,
                                     LorenzCurveError<FloatType, allow_crossing>
@@ -513,11 +523,14 @@ protected:
 
     const Dataset<Float>& dataset;
 
+    const Node<Float>* current_node{nullptr};
     Float left_sum{0};
     Float right_sum{0};
     size_t last_idx{0};
+    size_t nb_modalities{0};
 
     LorenzCurve curve;
+    std::vector<std::pair<size_t, Float>> _mod_N_pred;
 
     static inline Float _evaluate(const LorenzCurve& curve) {
         return static_cast<Float>(.5) - curve.area();
@@ -534,14 +547,36 @@ protected:
         curve.split_node(node);
     }
 
-    virtual inline void _new_feature(const Array<Float>& ys) override final {
+    virtual inline void _new_node(const Node<Float>* node) override final {
+        current_node = node;
+    }
+
+    virtual inline void _new_feature(size_t j) override final {
+        auto const& [Xj, y, p, w, indices] = current_node->data->sorted_Xypw(j);
         left_sum = 0;
-        right_sum = sum(ys);
+        right_sum = sum(y);
         last_idx = 0;
+        if(current_node->data->is_categorical(j)) {
+            auto [values, counts] = unique(Xj);
+            auto sumcounts{cumsum<size_t>(counts)};
+            nb_modalities = counts.size();
+            _mod_N_pred.clear();
+            for(size_t k{0}; k < nb_modalities; ++k) {
+                size_t base_idx{(k == 0) ? 0 : sumcounts[k-1]};
+                size_t idx{sumcounts[k]};
+                _mod_N_pred.emplace_back(
+                    idx-base_idx,
+                    sum(y.view(base_idx, idx))
+                );
+            }
+        } else {
+            _mod_N_pred.clear();
+            nb_modalities = 0;
+        }
     }
 
     virtual inline Float _evaluate(
-            const Node<Float>* node, const Array<Float>& y,
+            const Array<Float>& y,
             size_t idx) const override final {
         LorenzCurve splitted_curve(curve);
         auto diff{sum(y.view(last_idx, idx))};
@@ -550,13 +585,51 @@ protected:
         _this->left_sum += diff;
         _this->right_sum -= diff;
         splitted_curve.split_node(
-            node,
+            current_node,
             idx, left_sum / idx,
             y.size() - idx, right_sum / (y.size() - idx)
         );
         if constexpr(not allow_crossing) {
             if(splitted_curve.crosses(curve))
                 return -std::numeric_limits<Float>::infinity();
+        }
+        return _evaluate(splitted_curve);
+    }
+    virtual inline Float _evaluate(uint64_t mask) override final {
+        return _evaluate(mask, nullptr);
+    }
+    virtual inline Float _evaluate(
+            uint64_t mask,
+            std::tuple<size_t, Float, size_t, Float>& res) override final {
+        return _evaluate(mask, &res);
+    }
+    Float _evaluate(
+            uint64_t mask,
+            std::tuple<size_t, Float, size_t, Float>* res) {
+        LorenzCurve splitted_curve(curve);
+        left_sum = 0;
+        right_sum = 0;
+        size_t left_size{0};
+        size_t right_size{0};
+        for(size_t mod_idx{0}; mod_idx < nb_modalities; ++mod_idx) {
+            if(mask & (1ull << mod_idx)) {
+                left_sum += _mod_N_pred[mod_idx].second;
+                left_size += _mod_N_pred[mod_idx].first;
+            } else {
+                right_sum += _mod_N_pred[mod_idx].second;
+                right_size += _mod_N_pred[mod_idx].first;
+            }
+        }
+        splitted_curve.split_node(
+            current_node,
+            left_size, left_sum / left_size,
+            right_size, right_sum / right_size
+        );
+        if(res != nullptr) [[likely]] {
+            std::get<0>(*res) = left_size;
+            std::get<1>(*res) = left_sum / left_size;
+            std::get<2>(*res) = right_size;
+            std::get<3>(*res) = right_sum / right_size;
         }
         return _evaluate(splitted_curve);
     }

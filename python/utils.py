@@ -66,8 +66,6 @@ FUNCTION_ARGS = [
         } while(false)''',
         'void* tree, size_t* size'
     )
-
-
 ]
 
 def make_cpp_wrapper():
