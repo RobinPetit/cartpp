@@ -245,6 +245,7 @@ cdef class Config:
         self._config.bootstrap = bootstrap
         self._config.bootstrap_frac = bootstrap_frac
         self._config.bootstrap_replacement = bootstrap_replacement
+        self._config.verbose = verbose
 
 cdef class RegressionTree:
     cdef void* _tree

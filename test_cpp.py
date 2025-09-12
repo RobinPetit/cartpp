@@ -14,7 +14,9 @@ def area(xs, ys):
 
 dataset, test = load_data(
     DTYPE, ignore_categorical=False,
-    reduce_modalities=True, nb_obs=1_000_000
+    #reduce_modalities=True,
+    nb_obs=10_000_000,
+    frac_train=.99
 )
 
 
@@ -37,15 +39,16 @@ def show_lorenz_curves(model):
     plt.savefig(f'lorenz_curves_{LOSS}.png', bbox_inches='tight')
 
 
-# Model = RegressionTree
-Model = lambda cfg: RandomForest(cfg, 1000, 10)
+Model = RegressionTree
+# Model = lambda cfg: RandomForest(cfg, 100, 10)
 
-LOSS = 'poisson'
+LOSS = 'lorenz'
 
 config = Config(
-    loss=LOSS, interaction_depth=51, split_type='best',
-    minobs=100, dtype=DTYPE, crossing_lorenz=False,
-    bootstrap=True, bootstrap_frac=.5
+    loss=LOSS, interaction_depth=101, split_type='best',
+    minobs=10, dtype=DTYPE, crossing_lorenz=False,
+    # bootstrap=True, bootstrap_frac=.5,
+    verbose=True
 )
 model = Model(config)
 model.fit(dataset)

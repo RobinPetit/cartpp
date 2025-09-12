@@ -98,10 +98,12 @@ public:
                 if(not is_categorical[j])
                     continue;
                 auto nb_modalities{data->get_nb_unique_modalities(j)};
-                if(nb_modalities > 20)
+                constexpr size_t max_nb_modalities{20};
+                if(nb_modalities > max_nb_modalities)
                     throw std::runtime_error(
                         std::to_string(nb_modalities) + " is too much for feature "
-                        + std::to_string(j)
+                        + std::to_string(j) + " (expected < "
+                        + std::to_string(max_nb_modalities) + ")"
                     );
             }
         }
