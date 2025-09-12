@@ -4,33 +4,14 @@ from pathlib import Path
 LOSSES = {
     'MSE': 'MeanSquaredError',
     'POISSON_DEVIANCE': 'PoissonDeviance',
-    'LORENZ': 'LorenzCurveError'
+    'NON_CROSSING_LORENZ': 'NonCrossingLorenzCurveError',
+    'CROSSING_LORENZ': 'CrossingLorenzCurveError'
 }
 DTYPES = {
     'FLOAT32': 'CART_FLOAT32',
     'FLOAT64': 'CART_FLOAT64'
 }
 
-def make_function(def_name, def_value, args='void* tree'):
-    function = []
-    function.append(f'static inline void CALL_{def_name}_TREE({args}, __FloatingPoint fp, __Loss loss) {{')
-    function.append(f'#define {def_name}(F, L) {def_value}')
-    first = True
-    for loss in LOSSES.keys():
-        for dtype in DTYPES.keys():
-            if first:
-                first = False
-                IF = 'if'
-            else:
-                IF = '} else if'
-            function.append(f'    {IF}(fp == __FloatingPoint::{dtype} and loss == __Loss::{loss}) {{')
-            function.append(f'        {def_name}({DTYPES[dtype]}, {LOSSES[loss]});')
-    function.append('    } else {')
-    function.append('        throw std::runtime_error("Wrong loss or dtype");')
-    function.append('    }')
-    function.append(f'#undef {def_name}')
-    function.append('}')
-    return function
 
 FUNCTION_ARGS = [
     (
@@ -68,6 +49,28 @@ FUNCTION_ARGS = [
     )
 ]
 
+
+def make_function(def_name, def_value, args='void* tree'):
+    function = []
+    function.append(f'static inline void CALL_{def_name}_TREE({args}, __FloatingPoint fp, __Loss loss) {{')
+    function.append(f'#define {def_name}(F, L) {def_value}')
+    first = True
+    for loss in LOSSES.keys():
+        for dtype in DTYPES.keys():
+            if first:
+                first = False
+                IF = 'if'
+            else:
+                IF = '} else if'
+            function.append(f'    {IF}(fp == __FloatingPoint::{dtype} and loss == __Loss::{loss}) {{')
+            function.append(f'        {def_name}({DTYPES[dtype]}, {LOSSES[loss]});')
+    function.append('    } else {')
+    function.append('        throw std::runtime_error("Wrong loss or dtype");')
+    function.append('    }')
+    function.append(f'#undef {def_name}')
+    function.append('}')
+    return function
+
 def make_cpp_wrapper():
     dirname = os.path.dirname(os.path.abspath(__file__))
     with open(Path(dirname) / '__pycart_calls.hpp', 'w') as f:
@@ -76,6 +79,7 @@ def make_cpp_wrapper():
             f.write('\n'.join(make_function(*args)))
             f.write('\n\n')
         f.write('#undef BRT\n')
+
 
 if __name__ == '__main__':
     make_cpp_wrapper()

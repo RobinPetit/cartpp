@@ -135,6 +135,7 @@ public:
                 data->size() * current_loss
                 - (loss_left.size() * loss_left + loss_right.size() * loss_right)
             };
+            dloss /= data->size();
             if(dloss > best_dloss) {
                 best_dloss = dloss;
                 best_mask = _mask;
@@ -189,6 +190,7 @@ public:
         if(Xj[0] == Xj[Xj.size()-1])
             return false;
         Array<bool> left_mask(data->size(), false);
+        Array<bool> right_mask(data->size(), true);
         LossType left_loss;
         LossType right_loss;
         if constexpr(weighted) {
@@ -196,9 +198,8 @@ public:
         } else {
             right_loss.augment(y);
         }
-        Array<bool> right_mask(data->size(), true);
         size_t idx{0};
-        Float best_dloss{0};
+        Float best_dloss{best_split.dloss};
         Float best_threshold{std::numeric_limits<Float>::infinity()};
         Float best_loss_left{0.};
         Float best_loss_right{0.};
@@ -214,10 +215,6 @@ public:
             }
             if(idx == Xj.size())
                 break;
-            if(idx <= config.minobs)
-                continue;
-            if(data->size() - idx <= config.minobs)
-                break;
             if constexpr(weighted) {
                 auto sub_y{y.view(base_idx, idx)};
                 auto sub_w{w.view(base_idx, idx)};
@@ -228,10 +225,17 @@ public:
                 left_loss.augment(sub_y);
                 right_loss.diminish(sub_y);
             }
+            if(idx <= config.minobs)
+                continue;
+            if(data->size() - idx <= config.minobs)
+                break;
+            assert(idx > 0);
+            assert(idx < y.size());
             Float dloss{
                 data->size() * current_loss
                 - (idx*left_loss + (data->size()-idx)*right_loss)
             };
+            dloss /= data->size();
             if(dloss > best_dloss) {
                 best_dloss = dloss;
                 best_threshold = (prev_value + Xj[idx]) / static_cast<Float>(2);
@@ -266,7 +270,12 @@ public:
             Node<Float>* parent,
             const SplitChoice<Float>& split) {
         assert(split.valid);
-        assert(split.left_loss > 0 and split.right_loss > 0);
+        if(split.left_loss != LossType::get(split.left_data->get_y())) {
+            std::cout << split.left_loss << " vs "
+                << LossType::get(split.left_data->get_y()) << '\n';
+        }
+        assert(split.left_loss == LossType::get(split.left_data->get_y()));
+        assert(split.right_loss == LossType::get(split.right_data->get_y()));
         parent->left_child = new Node<Float>(
             -1, parent->depth+1, split.left_data, parent
         );
@@ -307,7 +316,9 @@ public:
         while(not container.empty()) {
             Node<Float>* node{container.top()};
             container.pop();
-            delete node;
+            delete node->left_child;
+            delete node->right_child;
+            node->left_child = node->right_child = nullptr;
         }
     }
 
@@ -316,14 +327,6 @@ public:
             return nullptr;
         Node<Float>* ret{container.top()};
         container.pop();
-        auto dloss{[](Node<Float>* n) {
-            return n->loss*n->nb_observations -
-                (n->left_child->loss*n->left_child->nb_observations +
-                 n->right_child->loss*n->right_child->nb_observations);
-        }};
-        if(dloss(ret) != ret->dloss) {
-            std::cerr << "PROBLEM\n";
-        }
         expand(ret->right_child);
         expand(ret->left_child);
         return ret;
@@ -337,8 +340,6 @@ private:
     using Implementation = impl::Splitter<Float, LossType>;
 
     void expand(Node<Float>* node) {
-        if(node->parent != nullptr and node->parent->right_child == node)
-            return;
         SplitChoice<Float> best_split;
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
@@ -363,14 +364,14 @@ private:
             node->feature_idx = best_split.feature_idx;
             node->dloss = best_split.dloss;
             node->threshold = best_split.threshold;
-            node->left_modalities = best_split.left_modalities;
-            node->right_modalities = best_split.right_modalities;
             Implementation::_expand_node(node, best_split);
             node->id = node_counter++;
             if(node->parent != nullptr) {
                 delete node->data;
                 node->data = nullptr;
             }
+            node->left_modalities = best_split.left_modalities;
+            node->right_modalities = best_split.right_modalities;
             container.emplace(node);
         }
     }
@@ -532,8 +533,6 @@ private:
         auto max_mask{1ull << (nb_modalities-1)};
         for(uint64_t _mask{1ull}; _mask < max_mask; ++_mask) {
             auto mask{_mask};
-            // TODO: handle minobs
-            (void)config;
             std::tuple<size_t, Float, size_t, Float> _split_res;
             Float new_loss{loss.evaluate(mask, _split_res)};
             if(std::get<0>(_split_res) <= config.minobs or

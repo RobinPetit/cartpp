@@ -50,7 +50,8 @@ cdef extern from "_pycart.hpp" nogil:
     cdef enum class __Loss(int):
         MSE,
         POISSON_DEVIANCE,
-        LORENZ
+        NON_CROSSING_LORENZ,
+        CROSSING_LORENZ
 
     void CALL_FIT_TREE(
             void* tree, void* dataset,
@@ -195,7 +196,7 @@ cdef class Config:
     def __init__(self, str loss, type dtype=np.float32, bool exact_splits=True,
                  str split_type='best', size_t max_depth=CART_DEFAULT,
                  size_t interaction_depth=CART_DEFAULT,
-                 int minobs=1):
+                 int minobs=1, crossing_lorenz: bool=False):
         cdef str _loss = loss.lower().strip()
         assert _loss in Config.AVAILABLE_LOSSES, f"Unknown loss '{loss}'"
         if _loss == 'mse':
@@ -203,7 +204,10 @@ cdef class Config:
         elif _loss == 'poisson':
             self._loss = __Loss.POISSON_DEVIANCE
         elif _loss == 'lorenz':
-            self._loss = __Loss.LORENZ
+            if crossing_lorenz:
+                self._loss = __Loss.CROSSING_LORENZ
+            else:
+                self._loss = __Loss.NON_CROSSING_LORENZ
         else:
             raise ValueError()
         self.dtype = dtype

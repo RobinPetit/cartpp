@@ -671,6 +671,11 @@ protected:
 };
 
 template <std::floating_point Float>
+using NonCrossingLorenzCurveError = LorenzCurveError<Float, false>;
+template <std::floating_point Float>
+using CrossingLorenzCurveError = LorenzCurveError<Float, true>;
+
+template <std::floating_point Float>
 static inline auto _consecutive_lcs(const std::vector<Node<Float>*>& nodes) {
     typename LorenzCurveError<Float>::LorenzCurve lc(nodes.front());
     std::vector<std::vector<Coord<Float>>> ret;
