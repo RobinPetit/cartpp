@@ -411,7 +411,11 @@ public:
         LorenzCurve(const Node<Float>* root):
                 quantiles(),
                 N{root->nb_observations},
-                Ey{mean<Float, Float>(root->data->get_y())} {
+                Ey{
+                    (root->data == nullptr)
+                    ? root->mean_y
+                    : mean<Float, Float>(root->data->get_y())
+                } {
             quantiles.emplace_back(nullptr, 0, Float(0.));
             quantiles.emplace_back(root, N, Ey);
         }

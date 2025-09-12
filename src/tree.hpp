@@ -53,7 +53,9 @@ public:
     BaseRegressionTree(const TreeConfig& config_informations):
             config{config_informations}, // data{nullptr},
             nb_splitting_nodes{0},
-            root{nullptr}, fitted{false}, prop_root_p0{0.}, nodes() {
+            root{nullptr}, fitted{false}, prop_root_p0{0.},
+            data{nullptr}, owns_dataset{false},
+            nodes() {
     }
     ~BaseRegressionTree() {
         if(root != nullptr) {
@@ -61,6 +63,9 @@ public:
             root->parent = nullptr;  // just to be sure
             delete root;
         }
+        if(owns_dataset and data != nullptr)
+            delete data;
+        data = nullptr;
     }
 
     inline size_t get_nb_splitting_nodes() const {
@@ -69,18 +74,30 @@ public:
 
     void fit(const Dataset<Float>& dataset) {
         auto start{std::chrono::system_clock::now()};
-        // data = dataset;
+        if(config.bootstrap) {
+            data = dataset.sample(
+                config.bootstrap_frac * dataset.size(),
+                config.bootstrap_replacement
+            );
+            owns_dataset = true;
+        } else {
+            data = &dataset;
+            owns_dataset = false;
+        }
+        is_categorical = Array<bool>(data->nb_features());
+        for(size_t j{0}; j < is_categorical.size(); ++j)
+            is_categorical[j] = data->is_categorical(j);
         // TODO: bootstraping
-        if(dataset.is_weighted())
-            prop_root_p0 = weighted_prop_false(dataset.get_p(), dataset.get_w());
+        if(data->is_weighted())
+            prop_root_p0 = weighted_prop_false(data->get_p(), data->get_w());
         else
-            prop_root_p0 = mean<bool, Float>(dataset.get_p());
+            prop_root_p0 = mean<bool, Float>(data->get_p());
         // TODO: handle fairness epsilon
         if(config.exact_splits) {
-            for(size_t j{0}; j < dataset.nb_features(); ++j) {
-                if(not dataset.is_categorical(j))
+            for(size_t j{0}; j < data->nb_features(); ++j) {
+                if(not is_categorical[j])
                     continue;
-                auto nb_modalities{dataset.get_nb_unique_modalities(j)};
+                auto nb_modalities{data->get_nb_unique_modalities(j)};
                 if(nb_modalities > 20)
                     throw std::runtime_error(
                         std::to_string(nb_modalities) + " is too much for feature "
@@ -90,12 +107,12 @@ public:
         }
         if(config.split_type == NodeSelector::DEPTH_FIRST) {
             if constexpr(Loss::CanBeDepthFirst<LossType>::value)
-                build_tree<NodeSelector::DEPTH_FIRST>(dataset);
+                build_tree<NodeSelector::DEPTH_FIRST>(*data);
             else
                 throw std::runtime_error("Cannot be depth first");
         } else if(config.split_type == NodeSelector::BEST_FIRST) {
             if constexpr(Loss::CanBeBestFirst<LossType>::value)
-                build_tree<NodeSelector::BEST_FIRST>(dataset);
+                build_tree<NodeSelector::BEST_FIRST>(*data);
             else
                 throw std::runtime_error("Cannot be best first");
         } else
@@ -103,31 +120,43 @@ public:
         fitted = true;
         auto end{std::chrono::system_clock::now()};
         std::chrono::duration<double> elapsed{end-start};
-        std::cout << "Time elapsed: " << elapsed << "\n";
-        std::cout << nb_splitting_nodes << " nodes\n";
+        if(config.verbose) {
+            std::cout << "Time elapsed: " << elapsed << "\n";
+            std::cout << nb_splitting_nodes << " nodes\n";
+        }
+        nb_features = data->nb_features();
+        if(owns_dataset) {
+            delete data;
+            data = nullptr;
+            for(const Node<Float>* node : *this) {
+                if(node->parent != nullptr and node->data != nullptr) {
+                    delete node->data;
+                }
+                const_cast<Node<Float>*>(node)->data = nullptr;
+            }
+        }
     }
 
     Array<Float> predict(const Array<Float>& X) const {
-        size_t nb_features{root->data->nb_features()};
         Array<Float> ret(X.size() / nb_features);
         predict(X, ret);
         return ret;
     }
 
     void predict(const Array<Float>& X, Array<Float>& out) const {
-        size_t nb_features{root->data->nb_features()};
         size_t n{out.size()};
         assert(n * nb_features == X.size());
         for(size_t i{0}; i < n; ++i) {
-            _predict(X.view(i*nb_features, (i+1)*nb_features), out[i]);
+            auto x{X.view(i*nb_features, (i+1)*nb_features)};
+            _predict(x, out[i]);
         }
     }
 
-    inline void _predict(const Array<Float> x, Float& ret) const {
+    inline void _predict(const Array<Float>& x, Float& ret) const {
         Node<Float>* node{root};
         while(not node->is_leaf()) {
             auto j{node->feature_idx};
-            if(root->data->is_categorical(j)) {
+            if(is_categorical[j]) {
                 auto modality{static_cast<int>(x[j])};
                 if(node->left_modalities & modality)
                     node = node->left_child;
@@ -146,7 +175,6 @@ public:
     }
 
     const std::vector<Node<Float>*>& get_internal_nodes() const {
-        std::cout << "Returning a vector of size " << nodes.size() << "\n";
         return nodes;
     }
     inline Iterator begin() const {
@@ -156,7 +184,7 @@ public:
         return nullptr;
     }
     void get_feature_importance(Float* ptr) const {
-        Array<Float> view(ptr, root->data->nb_features(), false);
+        Array<Float> view(ptr, nb_features, false);
         get_feature_importance(view);
     }
     void get_feature_importance(Array<Float>& importances) const {
@@ -170,7 +198,7 @@ public:
             importances[j] /= sum;
     }
     Array<Float> get_feature_importance() const {
-        Array<Float> ret(root->data->nb_features());
+        Array<Float> ret(nb_features);
         get_feature_importance(ret);
         return ret;
     }
@@ -180,6 +208,10 @@ protected:
     Node<Float>* root;
     bool fitted;
     Float prop_root_p0;
+    const Dataset<Float>* data;
+    Array<bool> is_categorical;
+    bool owns_dataset;
+    size_t nb_features{0};
 
     std::vector<Node<Float>*> nodes;
 
@@ -203,15 +235,17 @@ protected:
             if(node == nullptr)
                 break;
             nodes.push_back(node);
-            std::cout << std::string(3*node->depth, ' ')
-                      << "Node (" << node->id << "), Depth: " << node->depth
-                      << ", Feature: " << node->feature_idx
-                      << ", Threshold: " << node->threshold
-                      << ", DLoss: " << std::setprecision(15) << node->dloss
-                      << ", Loss: " << std::setprecision(15) << node->loss
-                      << ", Mean_value: " << node->mean_y
-                      << ", N=" << node->nb_observations
-                      << '\n';
+            if(config.verbose) {
+                std::cout << std::string(3*node->depth, ' ')
+                    << "Node (" << node->id << "), Depth: " << node->depth
+                    << ", Feature: " << node->feature_idx
+                    << ", Threshold: " << node->threshold
+                    << ", DLoss: " << std::setprecision(15) << node->dloss
+                    << ", Loss: " << std::setprecision(15) << node->loss
+                    << ", Mean_value: " << node->mean_y
+                    << ", N=" << node->nb_observations
+                    << '\n';
+            }
             if(root == nullptr)
                 root = node;
             ++nb_splitting_nodes;

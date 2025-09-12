@@ -1,4 +1,4 @@
-from pycart import RegressionTree, Config
+from pycart import RegressionTree, Config, RandomForest
 from _load_pycart_dataset import load_data
 
 import matplotlib.pyplot as plt
@@ -14,32 +14,44 @@ def area(xs, ys):
 
 dataset, test = load_data(
     DTYPE, ignore_categorical=False,
-    reduce_modalities=True, nb_obs=250_000
+    reduce_modalities=True, nb_obs=1_000_000
 )
+
+
+def show_lorenz_curves(model):
+    lcs = model.get_lorenz_curves()
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111)
+    step = 0
+    idx = 0
+    length = 4
+    while idx < lcs.size:
+        xs, ys = lcs[idx:idx+length].reshape(-1, 2).T
+        if step % 20 == 0:
+            ax.plot(xs, ys, label=f'After {step} splits (={.5-area(xs, ys):1.3e})')
+        step += 1
+        idx += length
+        length += 2
+    ax.grid(True)
+    plt.legend(loc='upper left')
+    plt.savefig(f'lorenz_curves_{LOSS}.png', bbox_inches='tight')
+
+
+# Model = RegressionTree
+Model = lambda cfg: RandomForest(cfg, 1000, 10)
 
 LOSS = 'poisson'
 
 config = Config(
-    loss=LOSS, interaction_depth=21, split_type='best',
-    minobs=10, dtype=DTYPE, crossing_lorenz=False
+    loss=LOSS, interaction_depth=51, split_type='best',
+    minobs=100, dtype=DTYPE, crossing_lorenz=False,
+    bootstrap=True, bootstrap_frac=.5
 )
-tree = RegressionTree(config)
-tree.fit(dataset)
-predictions = tree.predict(test.get_X())
-print(tree.get_feature_importance(dataset.get_X().shape[1]))
-lcs = tree.get_lorenz_curves()
-fig = plt.figure(figsize=(8, 8))
-ax = fig.add_subplot(111)
-step = 0
-idx = 0
-length = 4
-while idx < lcs.size:
-    xs, ys = lcs[idx:idx+length].reshape(-1, 2).T
-    if step % 20 == 0:
-        ax.plot(xs, ys, label=f'After {step} splits (={.5-area(xs, ys):1.3e})')
-    step += 1
-    idx += length
-    length += 2
-ax.grid(True)
-plt.legend(loc='upper left')
-plt.savefig(f'lorenz_curves_{LOSS}.png', bbox_inches='tight')
+model = Model(config)
+model.fit(dataset)
+print(dataset.get_X().shape)
+print(test.get_X().shape)
+predictions = model.predict(test.get_X())
+print(model.get_feature_importance(dataset.get_X().shape[1]))
+if Model is RegressionTree:
+    show_lorenz_curves(model)

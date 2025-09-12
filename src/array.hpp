@@ -6,6 +6,7 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
+#include <random>
 #include <stdexcept>
 #include <type_traits>
 
@@ -339,8 +340,8 @@ template <typename T, typename U>
 requires(std::is_convertible_v<U, T>)
 inline T _typed_sum(const Array<U>& array) {
     T ret{0};
-    for(const auto& x : array)
-        ret += x;
+    for(size_t i{0}; i < array.size(); ++i)
+        ret += array[i];
     return ret;
 }
 
@@ -365,7 +366,7 @@ inline Float weighted_mean(
 }
 
 template <std::floating_point Float, bool value>
-inline Float weighted_prop_eq(
+static inline Float weighted_prop_eq(
         const Array<bool>& array, const Array<Float>& weights) {
     // TODO: Ensure array.size() == weights.size()
     Float num{0};
@@ -377,19 +378,20 @@ inline Float weighted_prop_eq(
     }
     return num / den;
 }
+
 template <std::floating_point Float>
-inline Float weighted_prop_true(
+static inline Float weighted_prop_true(
         const Array<bool>& array, const Array<Float>& weights) {
     return weighted_prop_eq<Float, true>(array, weights);
 }
 template <std::floating_point Float>
-inline Float weighted_prop_false(
+static inline Float weighted_prop_false(
         const Array<bool>& array, const Array<Float>& weights) {
     return weighted_prop_eq<Float, false>(array, weights);
 }
 
 template <typename T>
-inline size_t nb_unique(const Array<T>& sorted_array) {
+static inline size_t nb_unique(const Array<T>& sorted_array) {
     size_t ret{1};
     for(size_t i{1}; i < sorted_array.size(); ++i)
         if(sorted_array[i] != sorted_array[i-1])
@@ -398,7 +400,7 @@ inline size_t nb_unique(const Array<T>& sorted_array) {
 }
 
 template <typename T>
-inline std::pair<std::vector<T>, std::vector<size_t>> unique(
+static inline std::pair<std::vector<T>, std::vector<size_t>> unique(
         const Array<T>& sorted_array, bool is_sorted=true) {
     if(not is_sorted) {
         auto _sorted_array{sorted(sorted_array)};
@@ -419,7 +421,7 @@ inline std::pair<std::vector<T>, std::vector<size_t>> unique(
 }
 
 template <typename T>
-inline Array<T> cumsum(const Array<T>& array) {
+static inline Array<T> cumsum(const Array<T>& array) {
     Array<T> ret(array.size(), 0);
     ret[0] = array[0];
     for(size_t i{1}; i < array.size(); ++i)
@@ -428,10 +430,24 @@ inline Array<T> cumsum(const Array<T>& array) {
 }
 
 template <typename T>
-inline std::ostream& operator<<(std::ostream& os, const Array<T>& array) {
+static inline std::ostream& operator<<(std::ostream& os, const Array<T>& array) {
     for(auto const& x : array)
         os << x;
     return os;
+}
+
+static inline Array<size_t> choice(size_t n, size_t k, bool replace) {
+    std::random_device dev;
+    std::mt19937 rng(dev());
+    std::uniform_int_distribution<std::mt19937::result_type> gen(0, n-1);
+    Array<size_t> ret(k);
+    if(replace) {
+        for(size_t j{0}; j < k; ++j)
+            ret[j] = gen(rng);
+    } else {
+        assert(false);  // TODO
+    }
+    return ret;
 }
 
 }  // Cart::

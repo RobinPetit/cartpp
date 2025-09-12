@@ -207,6 +207,10 @@ public:
             );
         }
     }
+    inline Dataset<Float>* sample(size_t k, bool replace) const {
+        Array<size_t> indices{choice(size(), k, replace)};
+        return at(indices);
+    }
     inline size_t get_nb_unique_modalities(size_t j) const {
         return nb_unique(sorted(get_feature_vector(j)));
     }

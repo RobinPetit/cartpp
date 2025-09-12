@@ -13,6 +13,9 @@ from libcpp.string cimport string
 from libcpp.utility cimport move
 from libcpp.vector cimport vector
 
+import threading
+from joblib import Parallel as _Parallel, delayed
+
 cimport numpy as np
 import numpy as np
 
@@ -27,11 +30,15 @@ cdef extern from "splitter.hpp" namespace "Cart" nogil:
 
 cdef extern from "tree.hpp" namespace "Cart" nogil:
     cdef struct TreeConfig:
+        bool bootstrap
+        double bootstrap_frac
+        bool bootstrap_replacement
         bool exact_splits
         NodeSelector split_type
         size_t max_depth
         size_t interaction_depth
         size_t minobs
+        bool verbose
 
 cdef extern from "_pycart.hpp" nogil:
     void* _make_dataset[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
@@ -200,7 +207,11 @@ cdef class Config:
     def __init__(self, str loss, type dtype=np.float32, bool exact_splits=True,
                  str split_type='best', size_t max_depth=CART_DEFAULT,
                  size_t interaction_depth=CART_DEFAULT,
-                 int minobs=1, crossing_lorenz: bool=False):
+                 int minobs=1, crossing_lorenz: bool=False,
+                 bootstrap: bool=False,
+                 bootstrap_frac: float=1.,
+                 bootstrap_replacement: bool=True,
+                 verbose: bool=False):
         cdef str _loss = loss.lower().strip()
         assert _loss in Config.AVAILABLE_LOSSES, f"Unknown loss '{loss}'"
         if _loss == 'mse':
@@ -231,6 +242,9 @@ cdef class Config:
         self._config.interaction_depth = interaction_depth
         self._config.max_depth = max_depth
         self._config.minobs = minobs
+        self._config.bootstrap = bootstrap
+        self._config.bootstrap_frac = bootstrap_frac
+        self._config.bootstrap_replacement = bootstrap_replacement
 
 cdef class RegressionTree:
     cdef void* _tree
@@ -238,17 +252,20 @@ cdef class RegressionTree:
     def __init__(self, config):
         self._tree = NULL
         self.config = config
-        CALL_CREATE_TREE(
-            &self._tree, &self.config._config, self.config._fp, self.config._loss
-        )
+        with nogil:
+            CALL_CREATE_TREE(
+                &self._tree, &self.config._config, self.config._fp, self.config._loss
+            )
         assert self._tree != NULL
 
     def __dealloc__(self):
-        CALL_DELETE_TREE(self._tree, self.config._fp, self.config._loss)
+        with nogil:
+            CALL_DELETE_TREE(self._tree, self.config._fp, self.config._loss)
 
     def fit(self, Dataset dataset):
         assert dataset.dtype == self.config.dtype
-        CALL_FIT_TREE(self._tree, dataset.ptr, self.config._fp, self.config._loss)
+        with nogil:
+            CALL_FIT_TREE(self._tree, dataset.ptr, self.config._fp, self.config._loss)
 
     def predict(self, np.ndarray X) -> np.ndarray:
         if X.ndim == 1:
@@ -257,30 +274,34 @@ cdef class RegressionTree:
         cdef np.float64_t[:] _ret_64
         cdef int n = <int>(X.shape[0])
         cdef int nb_dim = <int>(X.shape[1])
+        cdef void* ptr = <void*><long long>(X.ctypes.data)
         if self.config._fp == __FloatingPoint.FLOAT32:
             _ret_32 = np.empty(n, dtype=np.float32)
-            CALL_PREDICT_TREE(
-                self._tree,
-                <void*><long long>(X.ctypes.data), &_ret_32[0], n, nb_dim,
-                self.config._fp, self.config._loss,
-            )
+            with nogil:
+                CALL_PREDICT_TREE(
+                    self._tree,
+                    ptr, &_ret_32[0], n, nb_dim,
+                    self.config._fp, self.config._loss,
+                )
             return np.asarray(_ret_32)
         else:
             _ret_64 = np.empty(n, dtype=np.float64)
-            CALL_PREDICT_TREE(
-                self._tree,
-                <void*><long long>(X.ctypes.data), &_ret_64[0], n, nb_dim,
-                self.config._fp, self.config._loss,
-            )
+            with nogil:
+                CALL_PREDICT_TREE(
+                    self._tree,
+                    ptr, &_ret_64[0], n, nb_dim,
+                    self.config._fp, self.config._loss,
+                )
             return np.asarray(_ret_64)
         raise ValueError()
 
     def get_nb_internal_nodes(self) -> int:
         cdef size_t ret
-        CALL_GET_NB_INTERNAL_NODES_TREE(
-            self._tree, &ret,
-            self.config._fp, self.config._loss
-        )
+        with nogil:
+            CALL_GET_NB_INTERNAL_NODES_TREE(
+                self._tree, &ret,
+                self.config._fp, self.config._loss
+            )
         return ret
 
     def get_feature_importance(self, nb_features) -> np.ndarray:
@@ -288,17 +309,19 @@ cdef class RegressionTree:
         cdef np.float64_t[:] _ret64
         if self.config._fp == __FloatingPoint.FLOAT32:
             _ret32 = np.zeros(nb_features, dtype=np.float32)
-            CALL_GET_FEATURE_IMPORTANCE_TREE(
-                self._tree, &_ret32[0],
-                self.config._fp, self.config._loss
-            )
+            with nogil:
+                CALL_GET_FEATURE_IMPORTANCE_TREE(
+                    self._tree, &_ret32[0],
+                    self.config._fp, self.config._loss
+                )
             return np.asarray(_ret32)
         else:
             _ret64 = np.zeros(nb_features, dtype=np.float64)
-            CALL_GET_FEATURE_IMPORTANCE_TREE(
-                self._tree, &_ret64[0],
-                self.config._fp, self.config._loss
-            )
+            with nogil:
+                CALL_GET_FEATURE_IMPORTANCE_TREE(
+                    self._tree, &_ret64[0],
+                    self.config._fp, self.config._loss
+                )
             return np.asarray(_ret64)
 
     def get_lorenz_curves(self) -> np.ndarray:
@@ -309,3 +332,103 @@ cdef class RegressionTree:
         else:
             _extract_lorenz_curves[CART_FLOAT64](self._tree, &ret[0])
         return np.asarray(ret)
+
+def Parallel(n_jobs):
+    return _Parallel(n_jobs=n_jobs, backend='threading', prefer='threads')
+
+def regressor_fit(callback, dataset):
+    callback(dataset)
+
+def regressor_predict(callback, X, out, lock):
+    predictions = callback(X)
+    with lock:
+        out += predictions
+
+def regressor_predict_incremental(callback, X, out, i):
+    out[:, i] = callback(X)
+
+def regressor_importance(callback, nb_features, out, lock):
+    importances = callback(nb_features)
+    with lock:
+        out += importances
+
+cdef class RandomForest:
+    cdef list trees
+    cdef int n_jobs
+    cdef bint fitted
+    cdef Config config
+    def __init__(self, config, nb_trees: int, n_jobs: int):
+        self.n_jobs = n_jobs
+        self.config = config
+        self.trees = Parallel(n_jobs=self.n_jobs)(
+            delayed(RegressionTree)(
+                config
+            )
+            for _ in range(nb_trees)
+        )
+        self.fitted = False
+
+    def __len__(self):
+        return len(self.trees)
+
+    def fit(self, dataset):
+        Parallel(n_jobs=self.n_jobs)(
+            delayed(regressor_fit)(
+                self.trees[i].fit, dataset
+            )
+            for i in range(len(self.trees))
+        )
+        self.fitted = True
+
+    def predict(self, X):
+        assert self.fitted
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            dtype = np.float32
+        else:
+            dtype = np.float64
+        assert X.dtype == dtype
+        lock = threading.Lock()
+        out = np.zeros(X.shape[0], dtype=dtype)
+        Parallel(n_jobs=self.n_jobs)(
+            delayed(regressor_predict)(
+                self.trees[i].predict, X, out, lock
+            )
+            for i in range(len(self.trees))
+        )
+        out /= len(self.trees)
+        return out
+
+    def predict_incremental(self, X):
+        assert self.fitted
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            dtype = np.float32
+        else:
+            dtype = np.float64
+        out = np.zeros((X.shape[0], len(self.trees)), dtype=np.float64)
+        Parallel(n_jobs=self.n_jobs)(
+            delayed(regressor_predict_incremental)(
+                self.trees[i].predict, X, out, i
+            )
+            for i in range(len(self.trees))
+        )
+        np.cumsum(out, axis=1, out=out)
+        column_indices = np.arange(1, out.shape[1] + 1)
+        out /= column_indices
+        return out
+
+    def get_feature_importance(self, nb_features):
+        assert self.fitted
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            dtype = np.float32
+        else:
+            dtype = np.float64
+        out = np.zeros(nb_features, dtype=dtype)
+        lock = threading.Lock()
+        Parallel(n_jobs=self.n_jobs)(
+            delayed(regressor_importance)(
+                self.trees[i].get_feature_importance, nb_features, out, lock
+            )
+            for i in range(len(self.trees))
+        )
+        out /= len(self.trees)
+        return out
