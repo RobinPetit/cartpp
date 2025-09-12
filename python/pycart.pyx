@@ -73,6 +73,10 @@ cdef extern from "_pycart.hpp" nogil:
             void* tree, size_t* size,
             __FloatingPoint fp, __Loss loss
     )
+    void CALL_GET_FEATURE_IMPORTANCE_TREE(
+            void* tree, void* array,
+            __FloatingPoint fp, __Loss loss
+    )
     cdef size_t CART_DEFAULT
 
     void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
@@ -278,6 +282,24 @@ cdef class RegressionTree:
             self.config._fp, self.config._loss
         )
         return ret
+
+    def get_feature_importance(self, nb_features) -> np.ndarray:
+        cdef np.float32_t[:] _ret32
+        cdef np.float64_t[:] _ret64
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            _ret32 = np.zeros(nb_features, dtype=np.float32)
+            CALL_GET_FEATURE_IMPORTANCE_TREE(
+                self._tree, &_ret32[0],
+                self.config._fp, self.config._loss
+            )
+            return np.asarray(_ret32)
+        else:
+            _ret64 = np.zeros(nb_features, dtype=np.float64)
+            CALL_GET_FEATURE_IMPORTANCE_TREE(
+                self._tree, &_ret64[0],
+                self.config._fp, self.config._loss
+            )
+            return np.asarray(_ret64)
 
     def get_lorenz_curves(self) -> np.ndarray:
         n = self.get_nb_internal_nodes()

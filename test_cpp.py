@@ -14,16 +14,19 @@ def area(xs, ys):
 
 dataset, test = load_data(
     DTYPE, ignore_categorical=False,
-    reduce_modalities=True, nb_obs=20_000
+    reduce_modalities=True, nb_obs=250_000
 )
 
+LOSS = 'poisson'
+
 config = Config(
-    loss='lorenz', interaction_depth=21, split_type='best',
-    minobs=10, dtype=DTYPE,
+    loss=LOSS, interaction_depth=21, split_type='best',
+    minobs=10, dtype=DTYPE, crossing_lorenz=False
 )
 tree = RegressionTree(config)
 tree.fit(dataset)
 predictions = tree.predict(test.get_X())
+print(tree.get_feature_importance(dataset.get_X().shape[1]))
 lcs = tree.get_lorenz_curves()
 fig = plt.figure(figsize=(8, 8))
 ax = fig.add_subplot(111)
@@ -39,4 +42,4 @@ while idx < lcs.size:
     length += 2
 ax.grid(True)
 plt.legend(loc='upper left')
-plt.savefig('lorenz_curves.png', bbox_inches='tight')
+plt.savefig(f'lorenz_curves_{LOSS}.png', bbox_inches='tight')

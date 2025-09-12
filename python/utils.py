@@ -46,6 +46,11 @@ FUNCTION_ARGS = [
             *size = static_cast<BRT(F, L)*>(tree)->get_internal_nodes().size(); \\
         } while(false)''',
         'void* tree, size_t* size'
+    ),
+    (
+        'GET_FEATURE_IMPORTANCE',
+        'static_cast<BRT(F, L)*>(tree)->get_feature_importance(static_cast<F*>(array))',
+        'void* tree, void* array'
     )
 ]
 

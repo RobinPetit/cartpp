@@ -128,4 +128,28 @@ static inline void CALL_GET_NB_INTERNAL_NODES_TREE(void* tree, size_t* size, __F
 #undef GET_NB_INTERNAL_NODES
 }
 
+static inline void CALL_GET_FEATURE_IMPORTANCE_TREE(void* tree, void* array, __FloatingPoint fp, __Loss loss) {
+#define GET_FEATURE_IMPORTANCE(F, L) static_cast<BRT(F, L)*>(tree)->get_feature_importance(static_cast<F*>(array))
+    if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::MSE) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT32, MeanSquaredError);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::MSE) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT64, MeanSquaredError);
+    } else if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::POISSON_DEVIANCE) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT32, PoissonDeviance);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::POISSON_DEVIANCE) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT64, PoissonDeviance);
+    } else if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::NON_CROSSING_LORENZ) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT32, NonCrossingLorenzCurveError);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::NON_CROSSING_LORENZ) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT64, NonCrossingLorenzCurveError);
+    } else if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::CROSSING_LORENZ) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT32, CrossingLorenzCurveError);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::CROSSING_LORENZ) {
+        GET_FEATURE_IMPORTANCE(CART_FLOAT64, CrossingLorenzCurveError);
+    } else {
+        throw std::runtime_error("Wrong loss or dtype");
+    }
+#undef GET_FEATURE_IMPORTANCE
+}
+
 #undef BRT

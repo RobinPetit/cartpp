@@ -21,6 +21,34 @@ template <
 >
 class BaseRegressionTree {
 public:
+    class Iterator {
+    public:
+        Iterator(Node<Float>* root):
+                stack() {
+            if(root != nullptr)
+                stack.push(root);
+        }
+        inline Iterator& operator++() {
+            Node<Float>* top{stack.top()};
+            stack.pop();
+            if(not top->is_leaf()) {
+                stack.push(top->right_child);
+                stack.push(top->left_child);
+            }
+            return *this;
+        }
+        inline const Node<Float>* operator*() const {
+            if(stack.empty())
+                return nullptr;
+            else
+                return stack.top();
+        }
+        inline bool operator==(const Iterator& other) const {
+            return **this == *other;
+        }
+    private:
+        std::stack<Node<Float>*> stack;
+    };
     static_assert(std::is_same_v<Float, typename LossType::Float>);
     BaseRegressionTree(const TreeConfig& config_informations):
             config{config_informations}, // data{nullptr},
@@ -120,6 +148,31 @@ public:
     const std::vector<Node<Float>*>& get_internal_nodes() const {
         std::cout << "Returning a vector of size " << nodes.size() << "\n";
         return nodes;
+    }
+    inline Iterator begin() const {
+        return root;
+    }
+    inline Iterator end() const {
+        return nullptr;
+    }
+    void get_feature_importance(Float* ptr) const {
+        Array<Float> view(ptr, root->data->nb_features(), false);
+        get_feature_importance(view);
+    }
+    void get_feature_importance(Array<Float>& importances) const {
+        for(const Node<Float>* node : *this) {
+            if(node->is_leaf())
+                continue;
+            importances[node->feature_idx] += node->dloss;
+        }
+        Float sum{Cart::sum(importances)};
+        for(size_t j{0}; j < importances.size(); ++j)
+            importances[j] /= sum;
+    }
+    Array<Float> get_feature_importance() const {
+        Array<Float> ret(root->data->nb_features());
+        get_feature_importance(ret);
+        return ret;
     }
 protected:
     const TreeConfig& config;
