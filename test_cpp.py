@@ -14,9 +14,9 @@ def area(xs, ys):
 
 dataset, test = load_data(
     DTYPE, ignore_categorical=False,
-    #reduce_modalities=True,
+    reduce_modalities=True,
     nb_obs=10_000_000,
-    frac_train=.99
+    frac_train=.99,
 )
 
 
@@ -46,9 +46,10 @@ LOSS = 'lorenz'
 
 config = Config(
     loss=LOSS, interaction_depth=101, split_type='best',
-    minobs=10, dtype=DTYPE, crossing_lorenz=False,
+    minobs=3000, dtype=DTYPE, crossing_lorenz=True,
     # bootstrap=True, bootstrap_frac=.5,
-    verbose=True
+    verbose=Model is RegressionTree,
+    nb_covariates=8  # nb of covariates per tree in each tree
 )
 model = Model(config)
 model.fit(dataset)

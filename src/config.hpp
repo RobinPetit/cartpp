@@ -20,6 +20,7 @@ struct TreeConfig {
     size_t interaction_depth = std::numeric_limits<size_t>::max();
     size_t minobs = 1;
     bool verbose = false;
+    size_t nb_covariates = 0;
 };
 }
 

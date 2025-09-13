@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "array.hpp"
+#include "random.hpp"
 #include "utils.hpp"
 
 namespace Cart {
@@ -208,7 +209,7 @@ public:
         }
     }
     inline Dataset<Float>* sample(size_t k, bool replace) const {
-        Array<size_t> indices{choice(size(), k, replace)};
+        Array<size_t> indices{Random::choice(size(), k, replace)};
         return at(indices);
     }
     inline size_t get_nb_unique_modalities(size_t j) const {

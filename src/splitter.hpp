@@ -344,20 +344,23 @@ private:
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
         best_split.dloss = 0;
-        // TODO: handle covariates sampling
-        for(size_t j{0}; j < node->data->nb_features(); ++j) {
-            bool usable_covariate;
+        Array<bool> usable(node->data->nb_features(), false);
+        for(size_t j{0}; j < usable.size(); ++j) {
+            auto const& [Xj, y, p, w, indices] = node->data->sorted_Xypw(j);
+            usable[j] = Xj[0] != Xj[Xj.size()-1];
+        }
+        Array<size_t> features{where(usable)};
+        if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
+            features = Random::choice(features, config.nb_covariates, false);
+        for(size_t j : features) {
             if(node->data->is_weighted()) {
-                usable_covariate = Implementation::template find_best_split<true>(
+                Implementation::template find_best_split<true>(
                     config, node, j, node->loss, best_split
                 );
             } else {
-                usable_covariate = Implementation::template find_best_split<false>(
+                Implementation::template find_best_split<false>(
                     config, node, j, node->loss, best_split
                 );
-            }
-            if(usable_covariate) {
-                // TODO:
             }
         }
         if(best_split.valid) {
@@ -444,7 +447,15 @@ private:
         best_split.node = nullptr;
         for(auto node : container) {
             loss.new_node(node);
-            for(size_t j{0}; j < node->data->nb_features(); ++j) {
+            Array<bool> usable(dataset.nb_features(), false);
+            for(size_t j{0}; j < usable.size(); ++j) {
+                auto const& [Xj, y, p, w, indices] = node->data->sorted_Xypw(j);
+                usable[j] = Xj[0] != Xj[Xj.size()-1];
+            }
+            Array<size_t> features{where(usable)};
+            if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
+                features = Random::choice(features, config.nb_covariates, false);
+            for(size_t j : features) {
                 find_best_split(config, node, j, best_split);
             }
         }

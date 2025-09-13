@@ -6,7 +6,6 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
-#include <random>
 #include <stdexcept>
 #include <type_traits>
 
@@ -26,12 +25,42 @@ private:
     struct GenericArrayIterator {
     public:
         using value_type = T; // For msvc
+        using reference = value_type&;
+        using pointer = value_type*;
+        using difference_type = std::ptrdiff_t;
 
         GenericArrayIterator(VecType* vec):
             vector{vec}, i{0} {
         }
         inline VecType& operator*() {
             return vector[i];
+        }
+        // Post-decrement
+        inline GenericArrayIterator operator--(int) {
+            GenericArrayIterator ret(*this);
+            --*this;
+            return ret;
+        }
+        // Pre-decrement
+        inline GenericArrayIterator& operator--() {
+            --i;
+            return *this;
+        }
+
+        inline GenericArrayIterator& operator-=(size_t offset) {
+            i -= offset;
+            return *this;
+        }
+
+        inline GenericArrayIterator operator-(size_t offset) const {
+            GenericArrayIterator ret(*this);
+            return ret -= offset;
+        }
+        // Post-increment
+        inline GenericArrayIterator operator++(int) {
+            GenericArrayIterator ret(*this);
+            ++*this;
+            return ret;
         }
         // Pre-increment
         inline GenericArrayIterator& operator++() {
@@ -44,13 +73,23 @@ private:
             return *this;
         }
 
+        inline GenericArrayIterator operator+(size_t offset) const {
+            GenericArrayIterator ret(*this);
+            return ret += offset;
+        }
+
+        inline difference_type operator-(const GenericArrayIterator& other) const {
+            difference_type ret = (vector+i) - (other.vector+other.i);
+            return ret;
+        }
+
         inline bool operator==(const GenericArrayIterator& other) const {
             return  vector == other.vector
                 and i == other.i;
         }
     private:
         VecType* vector;
-        size_t i;
+        ssize_t i;
     };
 private:
     explicit Array(std::pair<T*, size_t> args):
@@ -436,19 +475,6 @@ static inline std::ostream& operator<<(std::ostream& os, const Array<T>& array) 
     return os;
 }
 
-static inline Array<size_t> choice(size_t n, size_t k, bool replace) {
-    std::random_device dev;
-    std::mt19937 rng(dev());
-    std::uniform_int_distribution<std::mt19937::result_type> gen(0, n-1);
-    Array<size_t> ret(k);
-    if(replace) {
-        for(size_t j{0}; j < k; ++j)
-            ret[j] = gen(rng);
-    } else {
-        assert(false);  // TODO
-    }
-    return ret;
-}
 
 }  // Cart::
 

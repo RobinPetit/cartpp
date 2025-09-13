@@ -485,9 +485,11 @@ public:
         inline Iterator end() const {
             return Iterator(quantiles.end(), N, Ey);
         }
+
         operator std::vector<Coord<Float>>() const {
             return std::vector<Coord<Float>>(begin(), end());
         }
+
         inline Float area() const {
             Float ret{0};
             Float last_LC{0};
@@ -532,6 +534,8 @@ protected:
     Float right_sum{0};
     size_t last_idx{0};
     size_t nb_modalities{0};
+    size_t total_size{0};
+    Float total_sum{0};
 
     LorenzCurve curve;
     std::vector<std::pair<size_t, Float>> _mod_N_pred;
@@ -560,6 +564,8 @@ protected:
         left_sum = 0;
         right_sum = sum(y);
         last_idx = 0;
+        total_size = 0;
+        total_sum = 0;
         if(current_node->data->is_categorical(j)) {
             auto [values, counts] = unique(Xj);
             auto sumcounts{cumsum<size_t>(counts)};
@@ -572,6 +578,8 @@ protected:
                     idx-base_idx,
                     sum(y.view(base_idx, idx))
                 );
+                total_size += _mod_N_pred.back().first;
+                total_sum += _mod_N_pred.back().second;
             }
         } else {
             _mod_N_pred.clear();
@@ -619,11 +627,13 @@ protected:
             if(mask & (1ull << mod_idx)) {
                 left_sum += _mod_N_pred[mod_idx].second;
                 left_size += _mod_N_pred[mod_idx].first;
-            } else {
+            } /*else {
                 right_sum += _mod_N_pred[mod_idx].second;
                 right_size += _mod_N_pred[mod_idx].first;
-            }
+            }*/
         }
+        right_size = total_size - left_size;
+        right_sum = total_sum - left_sum;
         splitted_curve.split_node(
             current_node,
             left_size, left_sum / left_size,

@@ -14,7 +14,8 @@ int main() {
     std::cout << data.nb_features() << '\n';
     Cart::TreeConfig config;
     config.interaction_depth = 101;
-    config.minobs = 10;
+    config.minobs = 100;
+    config.verbose = true;
     using Float = double;
     using Loss = Cart::Loss::CrossingLorenzCurveError<Float>;
     // using Loss = Cart::Loss::PoissonDeviance<Float>;

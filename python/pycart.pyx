@@ -39,6 +39,7 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         size_t interaction_depth
         size_t minobs
         bool verbose
+        size_t nb_covariates
 
 cdef extern from "_pycart.hpp" nogil:
     void* _make_dataset[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
@@ -63,27 +64,27 @@ cdef extern from "_pycart.hpp" nogil:
     void CALL_FIT_TREE(
             void* tree, void* dataset,
             __FloatingPoint fp, __Loss loss
-    )
+    ) except +
     void CALL_PREDICT_TREE(
             const void* tree, void* X, void* out, int n, int nb_dim,
             __FloatingPoint fp, __Loss loss
-    )
+    ) except +
     void CALL_CREATE_TREE(
             void** tree, TreeConfig* config,
             __FloatingPoint fp, __Loss loss
-    )
+    ) except +
     void CALL_DELETE_TREE(
             void* tree,
             __FloatingPoint fp, __Loss loss
-    )
+    ) except +
     void CALL_GET_NB_INTERNAL_NODES_TREE(
             void* tree, size_t* size,
             __FloatingPoint fp, __Loss loss
-    )
+    ) except +
     void CALL_GET_FEATURE_IMPORTANCE_TREE(
             void* tree, void* array,
             __FloatingPoint fp, __Loss loss
-    )
+    ) except +
     cdef size_t CART_DEFAULT
 
     void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
@@ -204,14 +205,21 @@ cdef class Config:
 
     AVAILABLE_LOSSES = ['mse', 'poisson', 'lorenz']
 
-    def __init__(self, str loss, type dtype=np.float32, bool exact_splits=True,
-                 str split_type='best', size_t max_depth=CART_DEFAULT,
+    def __init__(self,
+                 str loss,
+                 type dtype=np.float32,
+                 bool exact_splits=True,
+                 str split_type='best',
+                 size_t max_depth=CART_DEFAULT,
                  size_t interaction_depth=CART_DEFAULT,
-                 int minobs=1, crossing_lorenz: bool=False,
-                 bootstrap: bool=False,
-                 bootstrap_frac: float=1.,
-                 bootstrap_replacement: bool=True,
-                 verbose: bool=False):
+                 int minobs=1,
+                 bool crossing_lorenz=False,
+                 bool bootstrap=False,
+                 float bootstrap_frac=1.,
+                 bool bootstrap_replacement=True,
+                 bool verbose=False,
+                 size_t nb_covariates=0  # 0 if unbounded
+                 ):
         cdef str _loss = loss.lower().strip()
         assert _loss in Config.AVAILABLE_LOSSES, f"Unknown loss '{loss}'"
         if _loss == 'mse':
@@ -246,6 +254,7 @@ cdef class Config:
         self._config.bootstrap_frac = bootstrap_frac
         self._config.bootstrap_replacement = bootstrap_replacement
         self._config.verbose = verbose
+        self._config.nb_covariates = nb_covariates
 
 cdef class RegressionTree:
     cdef void* _tree
