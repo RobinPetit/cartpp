@@ -24,7 +24,7 @@ private:
     template <typename VecType>
     struct GenericArrayIterator {
     public:
-        using value_type = T; // For msvc
+        using value_type = T;
         using reference = value_type&;
         using pointer = value_type*;
         using difference_type = std::ptrdiff_t;
@@ -127,13 +127,16 @@ public:
             data[i] = vector[i];
     }
     ~Array() {
-        if(owns_data)
+        if(owns_data and data != nullptr)
             delete[] data;
         data = nullptr;
         owns_data = false;
     }
     Array& operator=(const Array<T>&) = delete;
     Array& operator=(Array<T>&& other) {
+        assert(data != other.data);
+        if(owns_data and data != nullptr)
+            delete[] data;
         data = other.data;
         n = other.n;
         owns_data = other.owns_data;

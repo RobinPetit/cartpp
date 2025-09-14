@@ -158,18 +158,19 @@ public:
     }
 
     inline const auto& sorted_Xypw(size_t j) const {
-        if(_cache_sorted.size() <= j) [[unlikely]] {
-            auto& cache{const_cast<Dataset<Float>*>(this)->_cache_sorted};
-            if(cache.size() == 0)
-                cache.reserve(nb_features());
-            cache.resize(j+1);
-            if(cache.size() != j+1) {
-                std::cout << "Problem: " << cache.size() << " vs " << j << '\n';
-            }
-            assert(cache.size() == j+1);
+        auto& cache_sorted{const_cast<Dataset<Float>*>(this)->_cache_sorted};
+        auto& cached{const_cast<Dataset<Float>*>(this)->_cached};
+        if(cache_sorted.size() == 0) [[unlikely]] {
+            cached.resize(nb_features());
+            cache_sorted.resize(nb_features());
+            for(size_t j{0}; j < nb_features(); ++j)
+                cached[j] = false;
+        }
+        assert(_cache_sorted.size() > j);
+        if(not cached[j]) [[unlikely]] {
             Array<Float> Xj{get_feature_vector(j, false)};
             Array<size_t> sorted_indices{argsort(Xj)};
-            cache[j] = {
+            cache_sorted[j] = {
                 std::move(Xj[sorted_indices]),
                 std::move(_y[sorted_indices]),
                 std::move(_p[sorted_indices]),
@@ -177,9 +178,9 @@ public:
                 decltype(sorted_indices)()
             };
             // Make sure we don't invalidate sorted_indices
-            std::get<4>(cache.back()) = std::move(sorted_indices);
+            std::get<4>(cache_sorted[j]) = std::move(sorted_indices);
+            cached[j] = true;
         }
-        assert(_cache_sorted.size() > j);
         return _cache_sorted[j];
     }
 
@@ -236,6 +237,7 @@ private:
             Array<size_t>   // indices
         >
     > _cache_sorted;
+    std::vector<bool> _cached;
 
 
     inline Float* get_feature_vector_ptr(size_t col_idx) {

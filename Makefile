@@ -4,14 +4,15 @@ CXX=clang++
 OPENMPFLAG=-fopenmp=libomp
 FLAGS=-std=c++20 -Isrc/ $(shell ./get_includes.py) -Wall -Wextra -Wdisabled-optimization -Wundef -Wpedantic -MMD
 
-# CXXFLAGS=-O3 ${FLAGS} -g -DNDEBUG
+CXXFLAGS=-O3 ${FLAGS} -DNDEBUG
 #-Rpass-analysis=loop-vectorize
-CXXFLAGS=-g -pg -O3 ${FLAGS}
+# CXXFLAGS=-g -pg -O3 ${FLAGS}
+# -fsanitize=address
 # -fno-inline-functions
 # -static-libasan
 
 LINK_FLAGS=-fno-strict-aliasing
-# -static-libasan
+# -fsanitize=address
 
 all: bin/default pycart.so
 
@@ -31,7 +32,7 @@ obj/pycart.o: python/pycart.cpp
 	${CXX} ${OPENMPFLAG} -MMD -DNPY_NO_DEPRECATED_API=NPY_1_7_API_VERSION -fPIC -c ${CXXFLAGS} $< -o $@
 
 %.so: obj/%.o
-	${CXX} -shared -pthread -fwrapv ${LINK_FLAGS} $< -o $@
+	${CXX} -fPIC -shared -pthread -fwrapv ${LINK_FLAGS} $< -o $@
 
 -include obj/*.d
 -include *.d

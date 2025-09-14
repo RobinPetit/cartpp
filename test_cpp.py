@@ -1,7 +1,6 @@
-from pycart import RegressionTree, Config, RandomForest
+# from pycart import RegressionTree
+from pycart import Config, RandomForest
 from _load_pycart_dataset import load_data
-
-import matplotlib.pyplot as plt
 
 import numpy as np
 
@@ -15,12 +14,15 @@ def area(xs, ys):
 dataset, test = load_data(
     DTYPE, ignore_categorical=False,
     reduce_modalities=True,
-    nb_obs=10_000_000,
-    frac_train=.99,
+    nb_obs=1_000_000,
+    frac_train=.7,
 )
+LOSS = 'lorenz'
 
 
 def show_lorenz_curves(model):
+    import matplotlib.pyplot as plt
+
     lcs = model.get_lorenz_curves()
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
@@ -39,23 +41,22 @@ def show_lorenz_curves(model):
     plt.savefig(f'lorenz_curves_{LOSS}.png', bbox_inches='tight')
 
 
-Model = RegressionTree
-# Model = lambda cfg: RandomForest(cfg, 100, 10)
+def test_rfs():
+    from time import time
+    for nb_cov in range(1, 16):
+        config = Config(
+            loss=LOSS, interaction_depth=21, split_type='best',
+            minobs=100, dtype=DTYPE, crossing_lorenz=True,
+            bootstrap=True, bootstrap_frac=.5,
+            verbose=False,
+            nb_covariates=nb_cov,  # nb of covariates per tree in each tree
+        )
+        NB_TREES = 250
+        rf = RandomForest(config, NB_TREES, -1)
+        beg = time()
+        rf.fit(dataset)
+        end = time()
+        print(f'Training {NB_TREES} trees on {nb_cov} covariate(s) took {end-beg:3.2f}s')
 
-LOSS = 'lorenz'
 
-config = Config(
-    loss=LOSS, interaction_depth=101, split_type='best',
-    minobs=3000, dtype=DTYPE, crossing_lorenz=True,
-    # bootstrap=True, bootstrap_frac=.5,
-    verbose=Model is RegressionTree,
-    nb_covariates=8  # nb of covariates per tree in each tree
-)
-model = Model(config)
-model.fit(dataset)
-print(dataset.get_X().shape)
-print(test.get_X().shape)
-predictions = model.predict(test.get_X())
-print(model.get_feature_importance(dataset.get_X().shape[1]))
-if Model is RegressionTree:
-    show_lorenz_curves(model)
+test_rfs()

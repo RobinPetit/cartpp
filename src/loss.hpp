@@ -379,21 +379,23 @@ public:
             Iterator() = delete;
             Iterator(_BaseIterator iterator, size_t size, Float expected_value):
                     it{iterator},
-                    n{it->N},
+                    n{0},
                     N{size},
-                    LC_gamma{it->pred},
+                    LC_gamma{0},
                     Ey{expected_value} {
             }
             inline Iterator& operator++() {
-                ++it;
                 n += it->N;
                 LC_gamma += it->N * it->pred;
+                ++it;
                 return *this;
             }
             inline Coord<Float> operator*() const {
+                auto norm_N{static_cast<Float>(N)};
+                auto norm_LC{static_cast<Float>(Ey*N)};
                 return {
-                    static_cast<Float>(n) / static_cast<Float>(N),
-                    static_cast<Float>(LC_gamma) / static_cast<Float>(Ey*N)
+                    static_cast<Float>(n+it->N) / norm_N,
+                    static_cast<Float>(LC_gamma + it->N*it->pred) / norm_LC
                 };
             }
             inline bool operator==(const Iterator& other) const {

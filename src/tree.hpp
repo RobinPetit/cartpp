@@ -130,12 +130,12 @@ public:
         if(owns_dataset) {
             delete data;
             data = nullptr;
-            for(const Node<Float>* node : *this) {
-                if(node->parent != nullptr and node->data != nullptr) {
-                    delete node->data;
-                }
-                const_cast<Node<Float>*>(node)->data = nullptr;
+        }
+        for(const Node<Float>* node : *this) {
+            if(node->parent != nullptr and node->data != nullptr) {
+                delete node->data;
             }
+            const_cast<Node<Float>*>(node)->data = nullptr;
         }
     }
 

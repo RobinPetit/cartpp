@@ -9,7 +9,6 @@
 namespace Cart {
 namespace Random {
 
-// Durstenfeld version of Fisher-Yate's shuffle
 template <typename T>
 static inline void permutation(Array<T>& array) {
     std::random_device dev;

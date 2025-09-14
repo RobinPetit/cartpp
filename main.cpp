@@ -13,7 +13,7 @@ int main() {
     std::cout << data.size() << '\n';
     std::cout << data.nb_features() << '\n';
     Cart::TreeConfig config;
-    config.interaction_depth = 101;
+    config.interaction_depth = 31;
     config.minobs = 100;
     config.verbose = true;
     using Float = double;
@@ -21,11 +21,8 @@ int main() {
     // using Loss = Cart::Loss::PoissonDeviance<Float>;
     Cart::Regression::BaseRegressionTree<Float, Loss> tree(config);
     tree.fit(data);
-    // auto lcs{Cart::Loss::_consecutive_lcs(tree.get_internal_nodes())};
-    // for(const auto& lc : lcs) {
-    //     std::cout << "New iteration:\n";
-    //     for(auto [gamma, LC] : lc)
-    //         std::cout << "\t(" << gamma << ", " << LC << ")\n";
-    // }
+    std::cout << &data << " vs " << &_data << '\n';
+    if(&data != &_data)
+        delete &data;
     return 0;
 }

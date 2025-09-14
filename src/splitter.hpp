@@ -455,9 +455,8 @@ private:
             Array<size_t> features{where(usable)};
             if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
                 features = Random::choice(features, config.nb_covariates, false);
-            for(size_t j : features) {
+            for(size_t j : features)
                 find_best_split(config, node, j, best_split);
-            }
         }
         return best_split;
     }
@@ -529,6 +528,7 @@ private:
             const TreeConfig& config, Node<Float>* node,
             size_t j, SplitChoice<Float>& best_split) {
         auto data{node->data};
+        assert(data != nullptr);
         const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
         loss.new_feature(j);
         if(Xj[0] == Xj[Xj.size()-1])
