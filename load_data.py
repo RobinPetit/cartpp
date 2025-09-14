@@ -1,17 +1,15 @@
 import pandas as pd
 import numpy as np
 
-import os.path
-
-# Example
 # Example
 def load_dataset_charpentier(nb_obs, verbose: bool=True):
     #df_fictif = pd.read_feather("data.feather")
 
-    df_fictif = pd.read_feather(os.path.dirname(__file__) + "/freqMTPLT2freq.feather")
-    print(df_fictif.shape)
-    exit()
+    df_fictif = pd.read_feather("freqMTPLT2freq.feather")
 
+    #print(df_fictif)
+    #print(list(df_fictif.columns))
+    #quit()
 
     #print(df_fictif)
     #print(df_fictif.dtypes)
@@ -59,13 +57,15 @@ def load_dataset_charpentier(nb_obs, verbose: bool=True):
     return df_fictif, col_features, col_response, col_protected
 
 
-def load_dataset_wutricht(nb_obs, verbose: bool=True):
+def load_dataset_wutricht(nb_obs, max_mod: int=20, verbose: bool=True):
     df_fictif = pd.read_feather("data.feather")
 
     #df_fictif = pd.read_feather("freqMTPLT2freq.feather")
 
     print(df_fictif)
     print(df_fictif.dtypes)
+    print(list(df_fictif.columns))
+    #quit()
 
     def inspect_col():
         list_covariates = []
@@ -79,21 +79,45 @@ def load_dataset_wutricht(nb_obs, verbose: bool=True):
     #inspect_col()
     #quit()
 
-    list_covariates = ['age', 'ac', 'power', 'brand', 'area', 'dens', 'ct']
+    list_covariates = ['age', 'ac', 'power', 'dens', 'gas', 'brand', 'area', 'ct']
 
-    p = df_fictif['gas'].values
+    list_covariates = ['age', 'ac', 'power', 'dens']
+
+    # ct cause error .... => too much modalities (26)
+
+    print(list(df_fictif["ct"].unique()))
+    print(len(list(df_fictif["ct"].unique())))
+    print(df_fictif["ct"].value_counts())
+
+    threshold = df_fictif["ct"].value_counts().values[max_mod-2]
+    #threshold = 5_000 # 10_000 #
+    list_small_modalities = list(df_fictif["ct"].value_counts()[(df_fictif["ct"].value_counts()<threshold)].index.values)
+    print(list_small_modalities)
+
+    df_fictif["ct"] = df_fictif["ct"].apply(lambda x: x if x not in list_small_modalities else "other")
+    print(len(list(df_fictif["ct"].unique())))
+    print(df_fictif["ct"].value_counts())
+
+    #quit()
+
+    p = df_fictif['gas'].map({'Regular': 0, 'Diesel': 1})
     df_fictif['p'] = p
-    df_fictif['gender'] = df_fictif['gas'].map({'Regular': 0, 'Diesel': 1})
+    #df_fictif['gender'] = df_fictif['gas'].map({'Regular': 0, 'Diesel': 1})
     df_fictif['y'] = df_fictif['claims']
 
     col_features = list_covariates
-    col_features.append("gender")
+    #col_features.append("gender")
     col_response = ['y']
     col_protected = ['p']
 
-    df_fictif = df_fictif[np.concatenate((col_features, col_response, col_protected))]
+    #df_fictif = df_fictif[np.concatenate((col_features, col_response, col_protected, ["truefreq"]))]
 
+    df_fictif = df_fictif[np.concatenate((col_features, col_response, col_protected))]
     df_fictif = df_fictif.iloc[:nb_obs, :]
+
+    print("df_prepared !")
+
+    print(df_fictif)
 
     # if nb_obs<1000000:
     # df_fictif = df_fictif.iloc[:nb_obs, :]
@@ -107,7 +131,9 @@ def load_dataset_wutricht(nb_obs, verbose: bool=True):
         print(df_fictif.describe())
     return df_fictif, col_features, col_response, col_protected
 
-def load_dataset(nb_obs, verbose: bool=True):
+
+
+def load_dataset(nb_obs, max_mod: int=20, verbose: bool=True):
     df_fictif = pd.read_feather("master_gender_agg2.feather")
     #df_fictif = df_fictif.iloc[:nb_obs, :]
     df_fictif['veh_power'] = df_fictif['veh_power'].apply(lambda x: np.nan if x == 0 else x)
@@ -169,7 +195,7 @@ def load_dataset(nb_obs, verbose: bool=True):
         df_fictif['veh_value'] = df_fictif['veh_value'].apply(lambda x: np.round(x / 1000) * 1000)
         return df_fictif
 
-    # df_fictif = reduce_nb_split(df_fictif)
+    df_fictif = reduce_nb_split(df_fictif)
 
     if verbose:
         print(f"After rounding: {print(df_fictif[['veh_value', 'veh_power', 'veh_weight']].nunique())}")
@@ -178,8 +204,24 @@ def load_dataset(nb_obs, verbose: bool=True):
     threshold = 70
     margin=1
 
+    print(list(df_fictif["veh_make"].unique()))
+    print(len(list(df_fictif["veh_make"].unique())))
+    print(df_fictif["veh_make"].value_counts())
+
+    threshold = df_fictif["veh_make"].value_counts().values[max_mod - 2]
+    #threshold = 3_900  # 10_000 #
+    list_small_modalities = list(
+        df_fictif["veh_make"].value_counts()[(df_fictif["veh_make"].value_counts() < threshold)].index.values)
+    print(list_small_modalities)
+
+    df_fictif["veh_make"] = df_fictif["veh_make"].apply(lambda x: x if x not in list_small_modalities else "other")
+    print(len(list(df_fictif["veh_make"].unique())))
+    print(df_fictif["veh_make"].value_counts())
+
+    #quit()
+
     col_features = list_covariates#['driv_m_age']#, 'veh_age']#, 'Veh_power']#['veh_make']#
-    col_features.append("gender")
+    #col_features.append("gender")
     col_response = ['y']
     col_protected = ['p']
 
@@ -198,3 +240,4 @@ def load_dataset(nb_obs, verbose: bool=True):
         print(df_fictif.isna().sum())
         print(df_fictif.describe())
     return df_fictif, col_features, col_response, col_protected
+

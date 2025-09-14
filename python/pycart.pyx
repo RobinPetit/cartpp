@@ -99,8 +99,9 @@ ctypedef ptrdiff_t CART_PTR_T
 cdef class Dataset:
     cdef void* ptr
     cdef type dtype
-    def __init__(self, np.ndarray[object, ndim=2] X, np.ndarray y,
+    def __init__(self, np.ndarray X, np.ndarray y,
                  np.ndarray p, dtype=np.float32):
+        X = X.astype(object)
         self.ptr = NULL
         self.dtype = dtype
         if dtype not in (np.float32, np.float64):
@@ -403,6 +404,7 @@ cdef class RandomForest:
         assert X.dtype == dtype
         lock = threading.Lock()
         out = np.zeros(X.shape[0], dtype=dtype)
+        X = np.ascontiguousarray(X.T)
         Parallel(n_jobs=self.n_jobs)(
             delayed(regressor_predict)(
                 self.trees[i].predict, X, out, lock
@@ -419,6 +421,7 @@ cdef class RandomForest:
         else:
             dtype = np.float64
         out = np.zeros((X.shape[0], len(self.trees)), dtype=np.float64)
+        X = np.ascontiguousarray(X.T)
         Parallel(n_jobs=self.n_jobs)(
             delayed(regressor_predict_incremental)(
                 self.trees[i].predict, X, out, i

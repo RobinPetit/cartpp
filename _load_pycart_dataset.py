@@ -1,7 +1,7 @@
 from pycart import Dataset
 
 import numpy as np
-from load_data import load_dataset
+from load_data import *
 
 
 def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
@@ -9,7 +9,7 @@ def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
               reduce_modalities: bool = False,
               frac_train: float = .7):
     df_fictif, col_features, col_response, col_protected = load_dataset(
-        nb_obs=nb_obs, verbose=verbose
+        nb_obs=nb_obs, verbose=verbose, max_mod=10
     )
     df_fictif.dropna(inplace=True)
 
