@@ -61,7 +61,7 @@ struct Container<Float, NodeSelector::DEPTH_FIRST> {
 template <std::floating_point Float, NodeSelector selector>
 using ContainerType = Container<Float, selector>::type;
 
-template <std::floating_point Float, typename LossType, NodeSelector selector>
+template <std::floating_point Float, typename LossType, NodeSelector selector, bool normalized_dloss>
 class Splitter;
 
 namespace impl {
@@ -71,23 +71,23 @@ template <
 >
 class Splitter {
 public:
-    template <bool weighted>
+    template <bool weighted, bool normalized_dloss>
     static inline bool find_best_split(
             const TreeConfig& config,
             const Node<Float>* node, size_t j,
             Float current_loss, SplitChoice<Float>& best_split) {
         if(node->data->is_categorical(j)) {
-            return find_best_split_categorical<weighted>(
+            return find_best_split_categorical<weighted, normalized_dloss>(
                 config, node, j, current_loss, best_split
             );
         } else {
-            return find_best_split_numerical<weighted>(
+            return find_best_split_numerical<weighted, normalized_dloss>(
                 config, node, j, current_loss, best_split
             );
         }
     }
 
-    template <bool weighted>
+    template <bool weighted, bool normalized_dloss>
     static bool find_best_split_categorical(
             const TreeConfig& config,
             const Node<Float>* node, size_t j,
@@ -135,7 +135,8 @@ public:
                 data->size() * current_loss
                 - (loss_left.size() * loss_left + loss_right.size() * loss_right)
             };
-            dloss /= data->size();
+            if constexpr(normalized_dloss)
+                dloss /= data->size();
             if(dloss > best_dloss) {
                 best_dloss = dloss;
                 best_mask = _mask;
@@ -178,7 +179,7 @@ public:
         return true;
     }
 
-    template <bool weighted>
+    template <bool weighted, bool normalized_dloss>
     static bool find_best_split_numerical(
             const TreeConfig& config,
             const Node<Float>* node, size_t j,
@@ -235,7 +236,8 @@ public:
                 data->size() * current_loss
                 - (idx*left_loss + (data->size()-idx)*right_loss)
             };
-            dloss /= data->size();
+            if constexpr(normalized_dloss)
+                dloss /= data->size();
             if(dloss > best_dloss) {
                 best_dloss = dloss;
                 best_threshold = (prev_value + Xj[idx]) / static_cast<Float>(2);
@@ -270,10 +272,6 @@ public:
             Node<Float>* parent,
             const SplitChoice<Float>& split) {
         assert(split.valid);
-        if(split.left_loss != LossType::get(split.left_data->get_y())) {
-            std::cout << split.left_loss << " vs "
-                << LossType::get(split.left_data->get_y()) << '\n';
-        }
         assert(split.left_loss == LossType::get(split.left_data->get_y()));
         assert(split.right_loss == LossType::get(split.right_data->get_y()));
         parent->left_child = new Node<Float>(
@@ -297,9 +295,10 @@ private:
 template <
     std::floating_point Float,
     Loss::_NodeBasedLoss<Float> LossType,
-    NodeSelector selector
+    NodeSelector selector,
+    bool normalized_dloss
 >
-class Splitter<Float, LossType, selector> final {
+class Splitter<Float, LossType, selector, normalized_dloss> final {
 public:
     Splitter() = delete;
     Splitter(const Dataset<Float>& data, const TreeConfig& config_):
@@ -354,11 +353,11 @@ private:
             features = Random::choice(features, config.nb_covariates, false);
         for(size_t j : features) {
             if(node->data->is_weighted()) {
-                Implementation::template find_best_split<true>(
+                Implementation::template find_best_split<true, normalized_dloss>(
                     config, node, j, node->loss, best_split
                 );
             } else {
-                Implementation::template find_best_split<false>(
+                Implementation::template find_best_split<false, normalized_dloss>(
                     config, node, j, node->loss, best_split
                 );
             }
@@ -384,9 +383,10 @@ private:
 // NOTE: it makes no sense to build it depth first, hence the specialization
 template <
     std::floating_point Float,
-    Loss::_TreeBasedLoss<Float> LossType
+    Loss::_TreeBasedLoss<Float> LossType,
+    bool normalized_dloss
 >
-class Splitter<Float, LossType, NodeSelector::BEST_FIRST> final {
+class Splitter<Float, LossType, NodeSelector::BEST_FIRST, normalized_dloss> final {
 public:
     Splitter() = delete;
     Splitter(const Dataset<Float>& data, const TreeConfig& config_):

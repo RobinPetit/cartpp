@@ -51,7 +51,7 @@ public:
     };
     static_assert(std::is_same_v<Float, typename LossType::Float>);
     BaseRegressionTree(const TreeConfig& config_informations):
-            config{config_informations}, // data{nullptr},
+            config{config_informations},
             nb_splitting_nodes{0},
             root{nullptr}, fitted{false}, prop_root_p0{0.},
             data{nullptr}, owns_dataset{false},
@@ -108,15 +108,25 @@ public:
             }
         }
         if(config.split_type == NodeSelector::DEPTH_FIRST) {
-            if constexpr(Loss::CanBeDepthFirst<LossType>::value)
-                build_tree<NodeSelector::DEPTH_FIRST>(*data);
-            else
+            if constexpr(Loss::CanBeDepthFirst<LossType>::value) {
+                if(config.normalized_dloss) {
+                    build_tree<NodeSelector::DEPTH_FIRST, true>(*data);
+                } else {
+                    build_tree<NodeSelector::DEPTH_FIRST, false>(*data);
+                }
+            } else {
                 throw std::runtime_error("Cannot be depth first");
+            }
         } else if(config.split_type == NodeSelector::BEST_FIRST) {
-            if constexpr(Loss::CanBeBestFirst<LossType>::value)
-                build_tree<NodeSelector::BEST_FIRST>(*data);
-            else
+            if constexpr(Loss::CanBeBestFirst<LossType>::value) {
+                if(config.normalized_dloss) {
+                    build_tree<NodeSelector::BEST_FIRST, true>(*data);
+                } else {
+                    build_tree<NodeSelector::BEST_FIRST, false>(*data);
+                }
+            } else {
                 throw std::runtime_error("Cannot be best first");
+            }
         } else
             throw std::runtime_error("Unknown NodeSelector");
         fitted = true;
@@ -229,9 +239,9 @@ protected:
         return loss();
     }
 
-    template <NodeSelector selector>
+    template <NodeSelector selector, bool normalized_dloss=true>
     void build_tree(const Dataset<Float>& dataset) {
-        Splitter<Float, LossType, selector> splitter(dataset, config);
+        Splitter<Float, LossType, selector, normalized_dloss> splitter(dataset, config);
         do {
             Node<Float>* node{splitter.split()};
             if(node == nullptr)
@@ -254,24 +264,6 @@ protected:
         } while(nb_splitting_nodes < config.interaction_depth);
     }
 
-    template <bool weighted>
-    SplitChoice<Float> find_best_split(
-            const Dataset<Float>* dataset, Float precomputed_loss) {
-        Array<bool> usable(dataset->nb_features());
-        for(size_t j{0}; j < usable.size(); ++j)
-            usable[j] = dataset->not_all_equal(j);
-        auto covariates{where(usable)};
-        // TODO: subsample features for RF
-        Float current_loss;
-        if(std::isinf(precomputed_loss)) {
-            if constexpr(weighted)
-                current_loss = compute_loss(dataset->get_y(), dataset->get_w());
-            else
-                current_loss = compute_loss(dataset->get_y());
-        } else
-            current_loss = precomputed_loss;
-
-    }
 };
 
 template <typename Float, typename LossType>

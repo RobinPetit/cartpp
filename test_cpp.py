@@ -1,4 +1,4 @@
-# from pycart import RegressionTree
+from pycart import RegressionTree
 from pycart import Config, RandomForest
 from _load_pycart_dataset import load_data
 
@@ -17,7 +17,7 @@ dataset, test = load_data(
     nb_obs=1_000_000,
     frac_train=.7,
 )
-LOSS = 'lorenz'
+LOSS = 'poisson'
 
 
 def show_lorenz_curves(model):
@@ -56,7 +56,19 @@ def test_rfs():
         beg = time()
         rf.fit(dataset)
         end = time()
-        print(f'Training {NB_TREES} trees on {nb_cov} covariate(s) took {end-beg:3.2f}s')
+        print('Training', NB_TREES, 'trees on', nb_cov,
+              'covariate(s) took', f'{end-beg:3.2f}s')
 
 
-test_rfs()
+# test_rfs()
+config = Config(
+    loss=LOSS, interaction_depth=21, split_type='best',
+    minobs=100, dtype=DTYPE, crossing_lorenz=True,
+    bootstrap=True, bootstrap_frac=.5,
+    verbose=True,
+    nb_covariates=0,  # nb of covariates per tree in each tree
+    normalized_dloss=True
+)
+tree = RegressionTree(config)
+tree.fit(dataset)
+predictions = tree.predict(test.get_X())

@@ -40,6 +40,7 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         size_t minobs
         bool verbose
         size_t nb_covariates
+        bool normalized_dloss
 
 cdef extern from "_pycart.hpp" nogil:
     void* _make_dataset[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
@@ -218,7 +219,8 @@ cdef class Config:
                  float bootstrap_frac=1.,
                  bool bootstrap_replacement=True,
                  bool verbose=False,
-                 size_t nb_covariates=0  # 0 if unbounded
+                 size_t nb_covariates=0,  # 0 if unbounded
+                 bool normalized_dloss=False
                  ):
         cdef str _loss = loss.lower().strip()
         assert _loss in Config.AVAILABLE_LOSSES, f"Unknown loss '{loss}'"
@@ -255,6 +257,7 @@ cdef class Config:
         self._config.bootstrap_replacement = bootstrap_replacement
         self._config.verbose = verbose
         self._config.nb_covariates = nb_covariates
+        self._config.normalized_dloss = normalized_dloss
 
 cdef class RegressionTree:
     cdef void* _tree
@@ -280,6 +283,7 @@ cdef class RegressionTree:
     def predict(self, np.ndarray X) -> np.ndarray:
         if X.ndim == 1:
             X = X.reshape(1, -1)
+        X = np.ascontiguousarray(X.T)
         cdef np.float32_t[:] _ret_32
         cdef np.float64_t[:] _ret_64
         cdef int n = <int>(X.shape[0])

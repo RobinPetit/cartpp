@@ -21,6 +21,7 @@ struct TreeConfig {
     size_t minobs = 1;
     bool verbose = false;
     size_t nb_covariates = 0;
+    bool normalized_dloss = true;
 };
 }
 
