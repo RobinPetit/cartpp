@@ -604,7 +604,12 @@ def print_dt(tree: RegressionTree, dataset: Dataset):
         if node_type != 'Leaf':
             node_type += f'({node.id})'
         if node.is_leaf():
-            print(prefix, f'Leaf  N: {node.nb_observations}', sep='')
+            print(
+                prefix,
+                'Leaf  N: ', node.nb_observations,
+                ', Pred: ', node.pred,
+                sep=''
+            )
         else:
             if threshold < 0:
                 print(
@@ -616,8 +621,10 @@ def print_dt(tree: RegressionTree, dataset: Dataset):
                     ', Pred: ', node.pred,
                     sep=''
                 )
-                print(prefix, f'(Left: {node.get_left_modalities(dataset)})', sep='')
-                print(prefix, f'(Right: {node.get_right_modalities(dataset)})', sep='')
+                left = sorted(node.get_left_modalities(dataset))
+                right = sorted(node.get_right_modalities(dataset))
+                print(prefix, f'(Left: {left})', sep='')
+                print(prefix, f'(Right: {right})', sep='')
             else:
                 print(
                     prefix, node_type,
