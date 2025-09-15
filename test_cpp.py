@@ -11,11 +11,17 @@ def area(xs, ys):
     return np.trapz(ys, xs)
 
 
-dataset, test = load_data(
-    DTYPE, ignore_categorical=False,
-    reduce_modalities=True,
-    nb_obs=1_000_000,
+(
+    complete_dataset,
+    dataset_train, dataset_valid,
+    dataset_training, dataset_testing
+) = load_data(
+    DTYPE,
+    ignore_categorical=False,
     frac_train=.7,
+    nb_obs=1_000_000,
+    kind='PV',
+    max_mod=10
 )
 LOSS = 'poisson'
 
@@ -45,30 +51,34 @@ def test_rfs():
     from time import time
     for nb_cov in range(1, 16):
         config = Config(
-            loss=LOSS, interaction_depth=21, split_type='best',
-            minobs=100, dtype=DTYPE, crossing_lorenz=True,
+            loss=LOSS, interaction_depth=10, split_type='best',
+            minobs=100, dtype=DTYPE, crossing_lorenz=False,
             bootstrap=True, bootstrap_frac=.5,
             verbose=False,
             nb_covariates=nb_cov,  # nb of covariates per tree in each tree
         )
-        NB_TREES = 250
+        NB_TREES = 1000
         rf = RandomForest(config, NB_TREES, -1)
         beg = time()
-        rf.fit(dataset)
+        rf.fit(dataset_testing)
         end = time()
         print('Training', NB_TREES, 'trees on', nb_cov,
               'covariate(s) took', f'{end-beg:3.2f}s')
 
 
-# test_rfs()
-config = Config(
-    loss=LOSS, interaction_depth=21, split_type='best',
-    minobs=100, dtype=DTYPE, crossing_lorenz=True,
-    bootstrap=True, bootstrap_frac=.5,
-    verbose=True,
-    nb_covariates=0,  # nb of covariates per tree in each tree
-    normalized_dloss=True
-)
-tree = RegressionTree(config)
-tree.fit(dataset)
-predictions = tree.predict(test.get_X())
+def test_dt():
+    config = Config(
+        loss=LOSS, interaction_depth=21, split_type='best',
+        minobs=100, dtype=DTYPE, crossing_lorenz=True,
+        bootstrap=True, bootstrap_frac=.5,
+        verbose=True,
+        nb_covariates=0,  # nb of covariates per tree in each tree
+        normalized_dloss=True
+    )
+    tree = RegressionTree(config)
+    tree.fit(dataset_training)
+    predictions = tree.predict(dataset_testing.get_X())
+
+
+# test_dt()
+test_rfs()

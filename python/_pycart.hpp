@@ -136,10 +136,18 @@ _DEFINE_DATASET_GET_(y)
 _DEFINE_DATASET_GET_(p)
 _DEFINE_DATASET_GET_(w)
 
+template <std::floating_point Float>
+static inline void CALL_SPLIT(
+        void* dataset, std::pair<void*, void*>* tmp, double frac, bool shuffle) {
+    *tmp = std::move(static_cast<Cart::Dataset<Float>*>(dataset)->split(frac, shuffle));
+}
+
     template <std::floating_point Float>
     static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
         size_t i{0};
-        auto tree{static_cast<Cart::Regression::BaseRegressionTree<Float, Cart::Loss::LorenzCurveError<Float>>*>(_tree)};
+        using Loss = Cart::Loss::LorenzCurveError<Float>;
+        using RT = Cart::Regression::BaseRegressionTree<Float, Loss>;
+        auto tree{static_cast<RT*>(_tree)};
         auto lcs{Cart::Loss::_consecutive_lcs(tree->get_internal_nodes())};
         for(auto const& lc : lcs) {
             for(auto [gamma, LC_gamma] : lc) {

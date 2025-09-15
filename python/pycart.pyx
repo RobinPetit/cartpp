@@ -10,7 +10,7 @@
 from libcpp cimport bool
 from libcpp.memory cimport shared_ptr, make_shared
 from libcpp.string cimport string
-from libcpp.utility cimport move
+from libcpp.utility cimport move, pair
 from libcpp.vector cimport vector
 
 import threading
@@ -51,6 +51,7 @@ cdef extern from "_pycart.hpp" nogil:
     np.ndarray __Dataset_get_y[T](const void*)
     np.ndarray __Dataset_get_w[T](const void*)
     np.ndarray __Dataset_get_p[T](const void*)
+    void CALL_SPLIT[T](void*, pair[void*, void*]*, double, bool)
 
     cdef enum class __FloatingPoint(int):
         FLOAT32,
@@ -199,6 +200,20 @@ cdef class Dataset:
         elif self.dtype is np.float64:
             return __Dataset_get_w[CART_FLOAT64](self.ptr)
 
+    def split(self, frac: float, shuffle: bool=True):
+        assert 0. < frac < 1.
+        cdef Dataset dataset1 = Dataset.__new__(Dataset)
+        cdef Dataset dataset2 = Dataset.__new__(Dataset)
+        cdef pair[void*, void*] tmp
+        if self.dtype is np.float32:
+            CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
+        else:
+            CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
+        dataset1.ptr = tmp.first
+        dataset2.ptr = tmp.second
+        dataset1.dtype = dataset2.dtype = self.dtype
+        return (dataset1, dataset2)
+
 cdef class Config:
     cdef TreeConfig _config
     cdef __Loss _loss
@@ -287,8 +302,8 @@ cdef class RegressionTree:
         X = np.ascontiguousarray(X.T)
         cdef np.float32_t[:] _ret_32
         cdef np.float64_t[:] _ret_64
-        cdef int n = <int>(X.shape[0])
-        cdef int nb_dim = <int>(X.shape[1])
+        cdef int n = <int>(X.shape[1])
+        cdef int nb_dim = <int>(X.shape[0])
         cdef void* ptr = <void*><long long>(X.ctypes.data)
         if self.config._fp == __FloatingPoint.FLOAT32:
             _ret_32 = np.empty(n, dtype=np.float32)
@@ -404,7 +419,8 @@ cdef class RandomForest:
         assert X.dtype == dtype
         lock = threading.Lock()
         out = np.zeros(X.shape[0], dtype=dtype)
-        X = np.ascontiguousarray(X.T)
+        # No need to transpose since RegressionTree.predict does it
+        # X = np.ascontiguousarray(X.T)
         Parallel(n_jobs=self.n_jobs)(
             delayed(regressor_predict)(
                 self.trees[i].predict, X, out, lock
@@ -420,8 +436,11 @@ cdef class RandomForest:
             dtype = np.float32
         else:
             dtype = np.float64
-        out = np.zeros((X.shape[0], len(self.trees)), dtype=np.float64)
-        X = np.ascontiguousarray(X.T)
+        assert X.dtype == dtype
+        print(X.shape)
+        out = np.zeros((X.shape[0], len(self.trees)), dtype=dtype)
+        # No need to transpose since RegressionTree.predict does it
+        # X = np.ascontiguousarray(X.T)
         Parallel(n_jobs=self.n_jobs)(
             delayed(regressor_predict_incremental)(
                 self.trees[i].predict, X, out, i

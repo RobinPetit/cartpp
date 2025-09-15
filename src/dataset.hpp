@@ -187,7 +187,7 @@ public:
     inline Dataset<Float>* at(const Array<size_t>& indices) const {
         Array<Float> newX(indices.size() * nb_features());
         for(size_t j{0}; j < nb_features(); ++j) {
-            const Float* ptr{get_feature_vector_ptr(j)};
+            const Float * const ptr{get_feature_vector_ptr(j)};
             for(size_t i{0}; i < indices.size(); ++i)
                 newX[j * indices.size() + i] = ptr[indices[i]];
         }
@@ -211,6 +211,7 @@ public:
     }
     inline Dataset<Float>* sample(size_t k, bool replace) const {
         Array<size_t> indices{Random::choice(size(), k, replace)};
+        assert(k == indices.size());
         return at(indices);
     }
     inline size_t get_nb_unique_modalities(size_t j) const {
@@ -218,6 +219,22 @@ public:
     }
     inline const std::string& ith_modality_of(size_t i, size_t j) const {
         return _modalities.at(j).at(i);
+    }
+
+    inline std::pair<Dataset<Float>*, Dataset<Float>*> split(
+            double frac, bool shuffle) const {
+        auto size1{static_cast<size_t>(size() * frac)};
+        auto indices{range(0, size())};
+        if(shuffle)
+            Random::permutation(indices);
+        assert(size1 < size());
+        auto left_indices{indices.view(0, size1)};
+        auto right_indices{indices.view(size1, size())};
+        assert(left_indices.size() + right_indices.size() == size());
+        return std::make_pair(
+            at(left_indices),
+            at(right_indices)
+        );
     }
 private:
     size_t nb_obs;

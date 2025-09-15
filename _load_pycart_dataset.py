@@ -1,63 +1,52 @@
 from pycart import Dataset
 
 import numpy as np
-from load_data import *
+from load_data import load_dataset, load_dataset_wutricht
 
 
 def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
               ignore_categorical: bool = False,
               reduce_modalities: bool = False,
-              frac_train: float = .7):
-    df_fictif, col_features, col_response, col_protected = load_dataset(
-        nb_obs=nb_obs, verbose=verbose, max_mod=10
+              frac_train: float = .8, kind: str = "PV", max_mod: int = 20):
+    if kind == "Wutricht":
+        callback = load_dataset_wutricht
+    else:
+        callback = load_dataset
+    df_fictif, col_features, col_response, col_protected = callback(
+        nb_obs=nb_obs, max_mod=max_mod, verbose=verbose
     )
+    if verbose:
+        print("db loaded !")
+
+    len_or = len(df_fictif)
     df_fictif.dropna(inplace=True)
+    if verbose:
+        print(f"dropna ! (dropped: {len_or - len(df_fictif)}, remaining: {len(df_fictif)})")
+        print(f"{col_features=}")
 
     # features = list(range(6, 13))
     # col_features = [col_features[j] for j in features]
 
-    df_train = df_fictif.iloc[:int(len(df_fictif)*frac_train), :]
-    df_test = df_fictif.iloc[int(len(df_fictif)*frac_train):, :]
-
-    # Splitting adequately the sets
-    X_train = df_train[col_features].values
-    y_train = df_train[col_response].values
-    p_train = df_train[col_protected].values
-    p_train = p_train.astype(np.float64).reshape(-1)
-    y_train = y_train.astype(np.float64).reshape(-1)
-
-    X_test = df_test[col_features].values
-    y_test = df_test[col_response].values
-    p_test = df_test[col_protected].values
-    p_test = p_test.astype(np.float64).reshape(-1)
-    y_test = y_test.astype(np.float64).reshape(-1)
-
-    X_train = X_train.astype(object)
-    X_test = X_test.astype(object)
+    X = df_fictif[col_features].values
+    y = df_fictif[col_response].values
+    p = df_fictif[col_protected].values
+    p = p.astype(np.float64).reshape(-1)
+    y = y.astype(np.float64).reshape(-1)
 
     if ignore_categorical:
         categorical = np.asarray([
-            isinstance(X_train[0, j], str) for j in range(X_train.shape[1])
+            isinstance(X[0, j], str) for j in range(X.shape[1])
         ])
-        X_train = X_train[:, ~categorical]
-        X_test = X_test[:, ~categorical]
-    else:
-        if reduce_modalities:
-            # Just to reduce the number of modalities for exact split  #
-            values, counts = np.unique(X_train[:, 2], return_counts=True)
-            values, counts = zip(*sorted(
-                list(zip(values, counts)),
-                key=lambda e: e[1])
-            )
-            cdf = np.cumsum(counts) * 100 / X_train.shape[0]
-            idx = np.where(cdf >= 8.)[0][0]
-            indices = np.zeros(X_train.shape[0], dtype=bool)
-            for i in range(idx, len(values)):
-                indices[X_train[:, 2] == values[i]] = True
-            X_train = X_train[indices, :]
-            y_train = y_train[indices]
-            p_train = p_train[indices]
-
-    ret_train = Dataset(X_train, y_train, p_train, dtype=dtype)
-    ret_test = Dataset(X_test, y_test, p_test, dtype=dtype)
-    return (ret_train, ret_test)
+        X = X[:, ~categorical]
+    complete_dataset = Dataset(X, y, p, dtype=dtype)
+    dataset_train, dataset_valid = complete_dataset, complete_dataset
+    dataset_training, dataset_testing = complete_dataset, complete_dataset
+    # dataset_train, dataset_valid = complete_dataset.split(frac_train, shuffle=False)
+    # dataset_training, dataset_testing = dataset_train.split(frac_train, shuffle=False)
+    if verbose:
+        print("db splitted !")
+    return (
+        complete_dataset,
+        dataset_train, dataset_valid,
+        dataset_training, dataset_testing
+    )

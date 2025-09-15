@@ -62,9 +62,10 @@ def load_dataset_wutricht(nb_obs, max_mod: int=20, verbose: bool=True):
 
     #df_fictif = pd.read_feather("freqMTPLT2freq.feather")
 
-    print(df_fictif)
-    print(df_fictif.dtypes)
-    print(list(df_fictif.columns))
+    if verbose:
+        print(df_fictif)
+        print(df_fictif.dtypes)
+        print(list(df_fictif.columns))
     #quit()
 
     def inspect_col():
@@ -85,18 +86,24 @@ def load_dataset_wutricht(nb_obs, max_mod: int=20, verbose: bool=True):
 
     # ct cause error .... => too much modalities (26)
 
-    print(list(df_fictif["ct"].unique()))
-    print(len(list(df_fictif["ct"].unique())))
-    print(df_fictif["ct"].value_counts())
+    if verbose:
+        print(list(df_fictif["ct"].unique()))
+        print(len(list(df_fictif["ct"].unique())))
+        print(df_fictif["ct"].value_counts())
 
     threshold = df_fictif["ct"].value_counts().values[max_mod-2]
     #threshold = 5_000 # 10_000 #
-    list_small_modalities = list(df_fictif["ct"].value_counts()[(df_fictif["ct"].value_counts()<threshold)].index.values)
-    print(list_small_modalities)
+    indices = df_fictif["ct"].value_counts() < threshold
+    list_small_modalities = list(df_fictif["ct"].value_counts()[indices].index.values)
+    if verbose:
+        print(list_small_modalities)
 
-    df_fictif["ct"] = df_fictif["ct"].apply(lambda x: x if x not in list_small_modalities else "other")
-    print(len(list(df_fictif["ct"].unique())))
-    print(df_fictif["ct"].value_counts())
+    df_fictif["ct"] = df_fictif["ct"].apply(
+        lambda x: x if x not in list_small_modalities else "other"
+    )
+    if verbose:
+        print(len(list(df_fictif["ct"].unique())))
+        print(df_fictif["ct"].value_counts())
 
     #quit()
 
@@ -115,9 +122,9 @@ def load_dataset_wutricht(nb_obs, max_mod: int=20, verbose: bool=True):
     df_fictif = df_fictif[np.concatenate((col_features, col_response, col_protected))]
     df_fictif = df_fictif.iloc[:nb_obs, :]
 
-    print("df_prepared !")
-
-    print(df_fictif)
+    if verbose:
+        print("df_prepared !")
+        print(df_fictif)
 
     # if nb_obs<1000000:
     # df_fictif = df_fictif.iloc[:nb_obs, :]
@@ -204,19 +211,25 @@ def load_dataset(nb_obs, max_mod: int=20, verbose: bool=True):
     threshold = 70
     margin=1
 
-    print(list(df_fictif["veh_make"].unique()))
-    print(len(list(df_fictif["veh_make"].unique())))
-    print(df_fictif["veh_make"].value_counts())
+    if verbose:
+        print(list(df_fictif["veh_make"].unique()))
+        print(len(list(df_fictif["veh_make"].unique())))
+        print(df_fictif["veh_make"].value_counts())
 
     threshold = df_fictif["veh_make"].value_counts().values[max_mod - 2]
     #threshold = 3_900  # 10_000 #
-    list_small_modalities = list(
-        df_fictif["veh_make"].value_counts()[(df_fictif["veh_make"].value_counts() < threshold)].index.values)
-    print(list_small_modalities)
+    indices = df_fictif["veh_make"].value_counts() < threshold
+    list_small_modalities = list(df_fictif["veh_make"].value_counts()[indices].index.values)
+    if verbose:
+        print(list_small_modalities)
 
-    df_fictif["veh_make"] = df_fictif["veh_make"].apply(lambda x: x if x not in list_small_modalities else "other")
-    print(len(list(df_fictif["veh_make"].unique())))
-    print(df_fictif["veh_make"].value_counts())
+    df_fictif["veh_make"] = df_fictif["veh_make"].apply(
+        lambda x: x if x not in list_small_modalities else "other"
+    )
+
+    if verbose:
+        print(len(list(df_fictif["veh_make"].unique())))
+        print(df_fictif["veh_make"].value_counts())
 
     #quit()
 
