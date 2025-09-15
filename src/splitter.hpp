@@ -129,7 +129,7 @@ public:
                 else
                     loss_right.augment(losses[mod_idx]);
             }
-            if(loss_left.size() <= config.minobs or loss_right.size() <= config.minobs)
+            if(loss_left.size() < config.minobs or loss_right.size() < config.minobs)
                 continue;
             Float dloss{
                 data->size() * current_loss
@@ -185,7 +185,7 @@ public:
             const Node<Float>* node, size_t j,
             Float current_loss, SplitChoice<Float>& best_split) {
         auto data{node->data};
-        if(data->size() <= 2*config.minobs)
+        if(data->size() < 2*config.minobs)
             return false;
         const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
         if(Xj[0] == Xj[Xj.size()-1])
@@ -226,9 +226,9 @@ public:
                 left_loss.augment(sub_y);
                 right_loss.diminish(sub_y);
             }
-            if(idx <= config.minobs)
+            if(idx < config.minobs)
                 continue;
-            if(data->size() - idx <= config.minobs)
+            if(data->size() - idx < config.minobs)
                 break;
             assert(idx > 0);
             assert(idx < y.size());
@@ -478,7 +478,7 @@ private:
             const TreeConfig& config, Node<Float>* node,
             size_t j, SplitChoice<Float>& best_split) {
         const Dataset<Float>* data{node->data};
-        if(data->size() <= 2*config.minobs)
+        if(data->size() < 2*config.minobs)
             return;
         const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
         loss.new_feature(j);
@@ -496,9 +496,9 @@ private:
             }
             if(idx == Xj.size())
                 break;
-            if(idx <= config.minobs)
+            if(idx < config.minobs)
                 continue;
-            if(data->size() - idx <= config.minobs)
+            if(data->size() - idx < config.minobs)
                 break;
             Float new_loss{loss.evaluate(y, idx)};
             Float dloss{new_loss - current_loss};
@@ -550,8 +550,8 @@ private:
             auto mask{_mask};
             std::tuple<size_t, Float, size_t, Float> _split_res;
             Float new_loss{loss.evaluate(mask, _split_res)};
-            if(std::get<0>(_split_res) <= config.minobs or
-               std::get<2>(_split_res) <= config.minobs)
+            if(std::get<0>(_split_res) < config.minobs or
+               std::get<2>(_split_res) < config.minobs)
                 continue;
             Float dloss{new_loss - current_loss};
             if(dloss > best_dloss) {
