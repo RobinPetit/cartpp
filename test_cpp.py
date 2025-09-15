@@ -1,5 +1,6 @@
 from pycart import RegressionTree
 from pycart import Config, RandomForest
+from pycart import print_dt
 from _load_pycart_dataset import load_data
 
 import numpy as np
@@ -78,7 +79,8 @@ def test_dt():
     tree = RegressionTree(config)
     tree.fit(dataset_training)
     predictions = tree.predict(dataset_testing.get_X())
+    print_dt(tree)
 
 
-# test_dt()
-test_rfs()
+test_dt()
+# test_rfs()

@@ -186,19 +186,27 @@ public:
         ret = node->mean_y;
     }
 
-    const std::vector<Node<Float>*>& get_internal_nodes() const {
+    inline const Node<Float>* get_root() const {
+        return root;
+    }
+
+    inline const std::vector<Node<Float>*>& get_internal_nodes() const {
         return nodes;
     }
+
     inline Iterator begin() const {
         return root;
     }
+
     inline Iterator end() const {
         return nullptr;
     }
+
     void get_feature_importance(Float* ptr) const {
         Array<Float> view(ptr, nb_features, false);
         get_feature_importance(view);
     }
+
     void get_feature_importance(Array<Float>& importances) const {
         for(const Node<Float>* node : *this) {
             if(node->is_leaf())

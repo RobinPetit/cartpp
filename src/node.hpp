@@ -9,7 +9,7 @@
 
 namespace Cart {
 template <typename Float>
-class Node final {
+struct Node final {
 public:
     Node() = delete;
 

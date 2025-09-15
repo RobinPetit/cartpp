@@ -19,6 +19,11 @@ from joblib import Parallel as _Parallel, delayed
 cimport numpy as np
 import numpy as np
 
+# TODO: make sure that sizeof(CART_FLOAT32) == 4 and sizeof(CART_FLOAT64) == 8
+ctypedef float CART_FLOAT32
+ctypedef double CART_FLOAT64
+ctypedef ptrdiff_t CART_PTR_T
+
 cdef extern from "array.hpp" namespace "Cart" nogil:
     cdef cppclass Array[T]:
         pass
@@ -27,6 +32,36 @@ cdef extern from "splitter.hpp" namespace "Cart" nogil:
     cdef enum class NodeSelector(int):
         BEST_FIRST,
         DEPTH_FIRST
+
+cdef extern from "node.hpp" namespace "Cart" nogil:
+    cdef struct CartNode32 "Cart::Node<CART_FLOAT32>":
+        size_t id
+        size_t depth
+        size_t nb_observations
+        int feature_idx
+        CART_FLOAT32 loss
+        CART_FLOAT32 dloss
+        CART_FLOAT32 threshold
+        CART_FLOAT32 mean_y
+        void* parent
+        void* left_child
+        void* right_child
+        bool is_leaf()
+        bool is_root()
+    cdef struct CartNode64 "Cart::Node<CART_FLOAT64>":
+        size_t id
+        size_t depth
+        size_t nb_observations
+        int feature_idx
+        CART_FLOAT64 loss
+        CART_FLOAT64 dloss
+        CART_FLOAT64 threshold
+        CART_FLOAT64 mean_y
+        void* parent
+        void* left_child
+        void* right_child
+        bool is_leaf()
+        bool is_root()
 
 cdef extern from "tree.hpp" namespace "Cart" nogil:
     cdef struct TreeConfig:
@@ -87,15 +122,18 @@ cdef extern from "_pycart.hpp" nogil:
             void* tree, void* array,
             __FloatingPoint fp, __Loss loss
     ) except +
+    void CALL_GET_INTERNAL_NODES_TREE(
+            void* tree, void** ret,
+            __FloatingPoint fp, __Loss loss
+    ) except +
+    void CALL_GET_ROOT_TREE(
+            void* tree, void** ret,
+            __FloatingPoint fp, __Loss loss
+    ) except +
     cdef size_t CART_DEFAULT
 
     void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
 
-
-# TODO: make sure that sizeof(CART_FLOAT32) == 4 and sizeof(CART_FLOAT64) == 8
-ctypedef float CART_FLOAT32
-ctypedef double CART_FLOAT64
-ctypedef ptrdiff_t CART_PTR_T
 
 cdef class Dataset:
     cdef void* ptr
@@ -276,6 +314,109 @@ cdef class Config:
         self._config.nb_covariates = nb_covariates
         self._config.normalized_dloss = normalized_dloss
 
+cdef class Node:
+    cdef void* ptr
+    cdef object dtype
+    def __init__(self, dtype):
+        self.dtype = dtype
+
+    @staticmethod
+    cdef Node from_pointer(void* ptr, object dtype):
+        cdef Node ret = Node.__new__(Node)
+        ret.ptr = ptr
+        ret.dtype = dtype
+        return ret
+
+    @property
+    def depth(self) -> int:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).depth
+        else:
+            return (<CartNode64*>(self.ptr)).depth
+
+    @property
+    def id(self) -> int:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).id
+        else:
+            return (<CartNode64*>(self.ptr)).id
+
+    @property
+    def nb_observations(self) -> int:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).nb_observations
+        else:
+            return (<CartNode64*>(self.ptr)).nb_observations
+
+    @property
+    def feature_idx(self) -> int:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).feature_idx
+        else:
+            return (<CartNode64*>(self.ptr)).feature_idx
+
+    @property
+    def loss(self) -> float:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).loss
+        else:
+            return (<CartNode64*>(self.ptr)).loss
+
+    @property
+    def dloss(self) -> float:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).dloss
+        else:
+            return (<CartNode64*>(self.ptr)).dloss
+
+    @property
+    def threshold(self) -> float:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).threshold
+        else:
+            return (<CartNode64*>(self.ptr)).threshold
+
+    def is_leaf(self):
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).is_leaf()
+        else:
+            return (<CartNode64*>(self.ptr)).is_leaf()
+
+    def is_root(self):
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).is_root()
+        else:
+            return (<CartNode64*>(self.ptr)).is_root()
+
+    @property
+    def left_child(self):
+        assert not self.is_leaf()
+        cdef void* child = NULL
+        if self.dtype is np.float32:
+            child = (<CartNode32*>(self.ptr)).left_child
+        else:
+            child = (<CartNode64*>(self.ptr)).left_child
+        return Node.from_pointer(child, self.dtype)
+
+    @property
+    def right_child(self):
+        assert not self.is_leaf()
+        cdef void* child = NULL
+        if self.dtype is np.float32:
+            child = (<CartNode32*>(self.ptr)).right_child
+        else:
+            child = (<CartNode64*>(self.ptr)).right_child
+        return Node.from_pointer(child, self.dtype)
+
+    @property
+    def parent(self):
+        cdef void* _parent = NULL
+        if self.dtype is np.float32:
+            _parent = (<CartNode32*>(self.ptr)).parent
+        else:
+            _parent = (<CartNode32*>(self.ptr)).parent
+        return Node.from_pointer(_parent, self.dtype)
+
 cdef class RegressionTree:
     cdef void* _tree
     cdef Config config
@@ -335,6 +476,39 @@ cdef class RegressionTree:
             )
         return ret
 
+    def get_root(self) -> Node:
+        cdef void* root_ptr = NULL
+        CALL_GET_ROOT_TREE(
+            self._tree, &root_ptr,
+            self.config._fp, self.config._loss
+        )
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            return Node.from_pointer(root_ptr, np.float32)
+        else:
+            return Node.from_pointer(root_ptr, np.float64)
+
+    def get_all_nodes(self) -> list[Node]:
+        cdef Node node
+        cdef Node left_child
+        cdef Node right_child
+        cdef list ret = list()
+        cdef vector[void*]* _nodes = NULL
+        cdef void** __tmp = NULL
+        CALL_GET_INTERNAL_NODES_TREE(
+            self._tree, __tmp, self.config._fp, self.config._loss
+        )
+        _nodes = <vector[void*]*>(__tmp[0])
+        cdef void* _ptr = NULL
+        for _ptr in _nodes[0]:
+            node = Node.from_pointer(_ptr, self.dtype)
+            ret.append(node)
+            left_child = node.left_child
+            right_child = node.right_child
+            if left_child.is_leaf():
+                ret.append(left_child)
+            if right_child.is_leaf():
+                ret.append(right_child)
+
     def get_feature_importance(self, nb_features) -> np.ndarray:
         cdef np.float32_t[:] _ret32
         cdef np.float64_t[:] _ret64
@@ -363,6 +537,35 @@ cdef class RegressionTree:
         else:
             _extract_lorenz_curves[CART_FLOAT64](self._tree, &ret[0])
         return np.asarray(ret)
+
+def print_dt(tree: RegressionTree):
+    stack = [tree.get_root()]
+    cdef double threshold
+    cdef int feature
+    while len(stack) > 0:
+        node = stack.pop()
+        assert node is not None
+        prefix = '    '*node.depth
+        node_type = 'Node'
+        threshold = node.threshold
+        feature = node.feature_idx
+        if node.is_leaf():
+            node_type = 'Leaf'
+        if node.is_root():
+            node_type = 'Root'
+        if node_type != 'Leaf':
+            node_type += f'({node.id})'
+        if node.is_leaf():
+            print(prefix, f'Leaf  N: {node.nb_observations}', sep='')
+        else:
+            print(
+                prefix, node_type, '  Feature: ', feature,
+                ', Threshold: ', threshold, ', N: ', node.nb_observations,
+                sep=''
+            )
+        if not node.is_leaf():
+            stack.append(node.right_child)
+            stack.append(node.left_child)
 
 def Parallel(n_jobs):
     return _Parallel(n_jobs=n_jobs, backend='threading', prefer='threads')
