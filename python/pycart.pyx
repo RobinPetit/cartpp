@@ -158,14 +158,14 @@ cdef class Dataset:
         p = np.ascontiguousarray(p.astype(np.uint8))
         cdef size_t N = <size_t>(y.shape[0])
         cdef size_t nb_features = <size_t>(_X.shape[1])
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             self.ptr = _make_dataset[CART_FLOAT32](
                 <CART_FLOAT32*>(<CART_PTR_T>(_X.ctypes.data)),
                 <CART_FLOAT32*>(<CART_PTR_T>(y.ctypes.data)),
                 <bool*>(<CART_PTR_T>(p.ctypes.data)),
                 move(modalities), N, nb_features
             )
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             self.ptr = _make_dataset[CART_FLOAT64](
                 <CART_FLOAT64*>(<CART_PTR_T>(_X.ctypes.data)),
                 <CART_FLOAT64*>(<CART_PTR_T>(y.ctypes.data)),
@@ -174,15 +174,15 @@ cdef class Dataset:
             )
 
     def __dealloc__(self):
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             _del_dataset[CART_FLOAT32](self.ptr)
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             _del_dataset[CART_FLOAT64](self.ptr)
 
     def save_to(self, path: str) -> None:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             _save_dataset[CART_FLOAT32](self.ptr, path)
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             _save_dataset[CART_FLOAT64](self.ptr, path)
 
     cdef np.ndarray _create_X(self, np.ndarray[object, ndim=2] X,
@@ -214,33 +214,33 @@ cdef class Dataset:
             counter += 1
 
     def is_categorical(self, int j) -> bool:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return _is_categorical[CART_FLOAT32](self.ptr, j)
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             return _is_categorical[CART_FLOAT64](self.ptr, j)
 
     def get_X(self) -> np.ndarray:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return __Dataset_get_X[CART_FLOAT32](self.ptr).T
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             return __Dataset_get_X[CART_FLOAT64](self.ptr).T
 
     def get_y(self) -> np.ndarray:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return __Dataset_get_y[CART_FLOAT32](self.ptr)
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             return __Dataset_get_y[CART_FLOAT64](self.ptr)
 
     def get_p(self) -> np.ndarray:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return __Dataset_get_p[CART_FLOAT32](self.ptr)
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             return __Dataset_get_p[CART_FLOAT64](self.ptr)
 
     def get_w(self) -> np.ndarray:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return __Dataset_get_w[CART_FLOAT32](self.ptr)
-        elif self.dtype is np.float64:
+        elif self.dtype == np.float64:
             return __Dataset_get_w[CART_FLOAT64](self.ptr)
 
     def split(self, frac: float, shuffle: bool=True):
@@ -248,7 +248,7 @@ cdef class Dataset:
         cdef Dataset dataset1 = Dataset.__new__(Dataset)
         cdef Dataset dataset2 = Dataset.__new__(Dataset)
         cdef pair[void*, void*] tmp
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
         else:
             CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
@@ -258,7 +258,7 @@ cdef class Dataset:
         return (dataset1, dataset2)
 
     def get_ith_modality_of_j(self, i, j) -> str:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return __Dataset_get_ith_modality_of_j[CART_FLOAT32](self.ptr, i, j)
         else:
             return __Dataset_get_ith_modality_of_j[CART_FLOAT64](self.ptr, i, j)
@@ -301,9 +301,9 @@ cdef class Config:
         else:
             raise ValueError()
         self.dtype = dtype
-        if dtype is np.float32:
+        if dtype == np.float32:
             self._fp = __FloatingPoint.FLOAT32
-        elif dtype is np.float64:
+        elif dtype == np.float64:
             self._fp = __FloatingPoint.FLOAT64
         else:
             raise ValueError()
@@ -340,69 +340,69 @@ cdef class Node:
 
     @property
     def depth(self) -> int:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).depth
         else:
             return (<CartNode64*>(self.ptr)).depth
 
     @property
     def id(self) -> int:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).id
         else:
             return (<CartNode64*>(self.ptr)).id
 
     @property
     def nb_observations(self) -> int:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).nb_observations
         else:
             return (<CartNode64*>(self.ptr)).nb_observations
 
     @property
     def feature_idx(self) -> int:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).feature_idx
         else:
             return (<CartNode64*>(self.ptr)).feature_idx
 
     @property
     def loss(self) -> float:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).loss
         else:
             return (<CartNode64*>(self.ptr)).loss
 
     @property
     def dloss(self) -> float:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).dloss
         else:
             return (<CartNode64*>(self.ptr)).dloss
 
     @property
     def threshold(self) -> float:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).threshold
         else:
             return (<CartNode64*>(self.ptr)).threshold
 
     @property
     def pred(self) -> float:
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).mean_y
         else:
             return (<CartNode64*>(self.ptr)).mean_y
 
 
     def is_leaf(self):
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).is_leaf()
         else:
             return (<CartNode64*>(self.ptr)).is_leaf()
 
     def is_root(self):
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             return (<CartNode32*>(self.ptr)).is_root()
         else:
             return (<CartNode64*>(self.ptr)).is_root()
@@ -411,7 +411,7 @@ cdef class Node:
     def left_child(self):
         assert not self.is_leaf()
         cdef void* child = NULL
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             child = (<CartNode32*>(self.ptr)).left_child
         else:
             child = (<CartNode64*>(self.ptr)).left_child
@@ -421,7 +421,7 @@ cdef class Node:
     def right_child(self):
         assert not self.is_leaf()
         cdef void* child = NULL
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             child = (<CartNode32*>(self.ptr)).right_child
         else:
             child = (<CartNode64*>(self.ptr)).right_child
@@ -430,7 +430,7 @@ cdef class Node:
     @property
     def parent(self):
         cdef void* _parent = NULL
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             _parent = (<CartNode32*>(self.ptr)).parent
         else:
             _parent = (<CartNode32*>(self.ptr)).parent
@@ -449,7 +449,7 @@ cdef class Node:
 
     def get_left_modalities(self, dataset: Dataset):
         cdef size_t _mask = 0
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             _mask = (<CartNode32*>(self.ptr)).left_modalities
         else:
             _mask = (<CartNode64*>(self.ptr)).left_modalities
@@ -457,7 +457,7 @@ cdef class Node:
 
     def get_right_modalities(self, dataset: Dataset):
         cdef size_t _mask = 0
-        if self.dtype is np.float32:
+        if self.dtype == np.float32:
             _mask = (<CartNode32*>(self.ptr)).right_modalities
         else:
             _mask = (<CartNode64*>(self.ptr)).right_modalities
@@ -494,6 +494,7 @@ cdef class RegressionTree:
         cdef int nb_dim = <int>(X.shape[0])
         cdef void* ptr = <void*><long long>(X.ctypes.data)
         if self.config._fp == __FloatingPoint.FLOAT32:
+            assert X.dtype == np.float32, (X.dtype, np.float32)
             _ret_32 = np.empty(n, dtype=np.float32)
             with nogil:
                 CALL_PREDICT_TREE(
@@ -503,6 +504,7 @@ cdef class RegressionTree:
                 )
             return np.asarray(_ret_32)
         else:
+            assert X.dtype == np.float64, (X.dtype, np.float64)
             _ret_64 = np.empty(n, dtype=np.float64)
             with nogil:
                 CALL_PREDICT_TREE(
