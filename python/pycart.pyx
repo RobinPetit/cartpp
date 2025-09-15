@@ -266,7 +266,8 @@ cdef class Config:
             raise ValueError()
         self._config.exact_splits = exact_splits
         self._config.interaction_depth = interaction_depth
-        self._config.max_depth = max_depth
+        if max_depth >= 0:
+            self._config.max_depth = max_depth
         self._config.minobs = minobs
         self._config.bootstrap = bootstrap
         self._config.bootstrap_frac = bootstrap_frac

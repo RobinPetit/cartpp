@@ -339,6 +339,8 @@ private:
     using Implementation = impl::Splitter<Float, LossType>;
 
     void expand(Node<Float>* node) {
+        if(node->depth == config.max_depth)
+            return;
         SplitChoice<Float> best_split;
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
@@ -446,6 +448,8 @@ private:
         best_split.dloss = 0;
         best_split.node = nullptr;
         for(auto node : container) {
+            if(node->depth == config.max_depth)
+                continue;
             loss.new_node(node);
             Array<bool> usable(dataset.nb_features(), false);
             for(size_t j{0}; j < usable.size(); ++j) {
