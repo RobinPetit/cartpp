@@ -79,7 +79,7 @@ def test_dt():
     tree = RegressionTree(config)
     tree.fit(dataset_training)
     predictions = tree.predict(dataset_testing.get_X())
-    print_dt(tree)
+    print_dt(tree, complete_dataset)
 
 
 test_dt()

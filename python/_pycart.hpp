@@ -142,19 +142,24 @@ static inline void CALL_SPLIT(
     *tmp = std::move(static_cast<Cart::Dataset<Float>*>(dataset)->split(frac, shuffle));
 }
 
-    template <std::floating_point Float>
-    static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
-        size_t i{0};
-        using Loss = Cart::Loss::LorenzCurveError<Float>;
-        using RT = Cart::Regression::BaseRegressionTree<Float, Loss>;
-        auto tree{static_cast<RT*>(_tree)};
-        auto lcs{Cart::Loss::_consecutive_lcs(tree->get_internal_nodes())};
-        for(auto const& lc : lcs) {
-            for(auto [gamma, LC_gamma] : lc) {
-                out[i++] = static_cast<CART_FLOAT64>(gamma);
-                out[i++] = static_cast<CART_FLOAT64>(LC_gamma);
-            }
+template <std::floating_point Float>
+static inline std::string __Dataset_get_ith_modality_of_j(void* dataset, int i, int j) {
+    return static_cast<Cart::Dataset<Float>*>(dataset)->ith_modality_of(i, j);
+}
+
+template <std::floating_point Float>
+static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
+    size_t i{0};
+    using Loss = Cart::Loss::LorenzCurveError<Float>;
+    using RT = Cart::Regression::BaseRegressionTree<Float, Loss>;
+    auto tree{static_cast<RT*>(_tree)};
+    auto lcs{Cart::Loss::_consecutive_lcs(tree->get_internal_nodes())};
+    for(auto const& lc : lcs) {
+        for(auto [gamma, LC_gamma] : lc) {
+            out[i++] = static_cast<CART_FLOAT64>(gamma);
+            out[i++] = static_cast<CART_FLOAT64>(LC_gamma);
         }
     }
+}
 
 #endif

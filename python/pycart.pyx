@@ -48,6 +48,8 @@ cdef extern from "node.hpp" namespace "Cart" nogil:
         void* right_child
         bool is_leaf()
         bool is_root()
+        size_t left_modalities
+        size_t right_modalities
     cdef struct CartNode64 "Cart::Node<CART_FLOAT64>":
         size_t id
         size_t depth
@@ -62,6 +64,8 @@ cdef extern from "node.hpp" namespace "Cart" nogil:
         void* right_child
         bool is_leaf()
         bool is_root()
+        size_t left_modalities
+        size_t right_modalities
 
 cdef extern from "tree.hpp" namespace "Cart" nogil:
     cdef struct TreeConfig:
@@ -87,6 +91,7 @@ cdef extern from "_pycart.hpp" nogil:
     np.ndarray __Dataset_get_w[T](const void*)
     np.ndarray __Dataset_get_p[T](const void*)
     void CALL_SPLIT[T](void*, pair[void*, void*]*, double, bool)
+    string __Dataset_get_ith_modality_of_j[T](void*, int, int)
 
     cdef enum class __FloatingPoint(int):
         FLOAT32,
@@ -252,6 +257,12 @@ cdef class Dataset:
         dataset1.dtype = dataset2.dtype = self.dtype
         return (dataset1, dataset2)
 
+    def get_ith_modality_of_j(self, i, j) -> str:
+        if self.dtype is np.float32:
+            return __Dataset_get_ith_modality_of_j[CART_FLOAT32](self.ptr, i, j)
+        else:
+            return __Dataset_get_ith_modality_of_j[CART_FLOAT64](self.ptr, i, j)
+
 cdef class Config:
     cdef TreeConfig _config
     cdef __Loss _loss
@@ -376,6 +387,14 @@ cdef class Node:
         else:
             return (<CartNode64*>(self.ptr)).threshold
 
+    @property
+    def pred(self) -> float:
+        if self.dtype is np.float32:
+            return (<CartNode32*>(self.ptr)).mean_y
+        else:
+            return (<CartNode64*>(self.ptr)).mean_y
+
+
     def is_leaf(self):
         if self.dtype is np.float32:
             return (<CartNode32*>(self.ptr)).is_leaf()
@@ -416,6 +435,33 @@ cdef class Node:
         else:
             _parent = (<CartNode32*>(self.ptr)).parent
         return Node.from_pointer(_parent, self.dtype)
+
+    @staticmethod
+    cdef list modalities_from_mask(int j, size_t mask, Dataset dataset):
+        cdef list ret = []
+        cdef int i = 0
+        while mask > 0:
+            if mask & 1:
+                ret.append(dataset.get_ith_modality_of_j(i, j))
+            i += 1
+            mask /= 2
+        return ret
+
+    def get_left_modalities(self, dataset: Dataset):
+        cdef size_t _mask = 0
+        if self.dtype is np.float32:
+            _mask = (<CartNode32*>(self.ptr)).left_modalities
+        else:
+            _mask = (<CartNode64*>(self.ptr)).left_modalities
+        return Node.modalities_from_mask(self.feature_idx, _mask, dataset)
+
+    def get_right_modalities(self, dataset: Dataset):
+        cdef size_t _mask = 0
+        if self.dtype is np.float32:
+            _mask = (<CartNode32*>(self.ptr)).right_modalities
+        else:
+            _mask = (<CartNode64*>(self.ptr)).right_modalities
+        return Node.modalities_from_mask(self.feature_idx, _mask, dataset)
 
 cdef class RegressionTree:
     cdef void* _tree
@@ -538,7 +584,7 @@ cdef class RegressionTree:
             _extract_lorenz_curves[CART_FLOAT64](self._tree, &ret[0])
         return np.asarray(ret)
 
-def print_dt(tree: RegressionTree):
+def print_dt(tree: RegressionTree, dataset: Dataset):
     stack = [tree.get_root()]
     cdef double threshold
     cdef int feature
@@ -549,6 +595,8 @@ def print_dt(tree: RegressionTree):
         node_type = 'Node'
         threshold = node.threshold
         feature = node.feature_idx
+        loss = node.loss
+        dloss = node.dloss
         if node.is_leaf():
             node_type = 'Leaf'
         if node.is_root():
@@ -558,11 +606,29 @@ def print_dt(tree: RegressionTree):
         if node.is_leaf():
             print(prefix, f'Leaf  N: {node.nb_observations}', sep='')
         else:
-            print(
-                prefix, node_type, '  Feature: ', feature,
-                ', Threshold: ', threshold, ', N: ', node.nb_observations,
-                sep=''
-            )
+            if threshold < 0:
+                print(
+                    prefix, node_type,
+                    '  Feature: ', feature,
+                    ', DLoss: ', dloss,
+                    ', Loss: ', loss,
+                    ', N: ', node.nb_observations,
+                    ', Pred: ', node.pred,
+                    sep=''
+                )
+                print(prefix, f'(Left: {node.get_left_modalities(dataset)})', sep='')
+                print(prefix, f'(Right: {node.get_right_modalities(dataset)})', sep='')
+            else:
+                print(
+                    prefix, node_type,
+                    '  Feature: ', feature,
+                    ', Threshold: ', threshold,
+                    ', DLoss: ', dloss,
+                    ', Loss: ', loss,
+                    ', N: ', node.nb_observations,
+                    ', Pred: ', node.pred,
+                    sep=''
+                )
         if not node.is_leaf():
             stack.append(node.right_child)
             stack.append(node.left_child)
