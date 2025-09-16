@@ -42,6 +42,7 @@ public:
                 delete data;  // root is not owner of its dataset
             data = nullptr;
         }
+        parent = nullptr;
     }
 
     /****** Getters ******/

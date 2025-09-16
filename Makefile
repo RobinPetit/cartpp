@@ -8,7 +8,6 @@ CXXFLAGS=-O3 ${FLAGS} -DNDEBUG
 #-Rpass-analysis=loop-vectorize
 # CXXFLAGS=-g -O3 ${FLAGS}
 # -fsanitize=address
-# -fno-inline-functions
 # -static-libasan
 
 LINK_FLAGS=-fno-strict-aliasing
@@ -23,7 +22,7 @@ obj/%.o: %.cpp
 	${CXX} -c ${CXXFLAGS} -fsanitize=address $< -o $@
 
 python/__pycart_calls.hpp: python/utils.py
-	python3 $^
+	python3 $<
 
 python/pycart.cpp: python/pycart.pyx
 	cythonize $<

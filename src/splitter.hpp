@@ -272,8 +272,6 @@ public:
             Node<Float>* parent,
             const SplitChoice<Float>& split) {
         assert(split.valid);
-        assert(split.left_loss == LossType::get(split.left_data->get_y()));
-        assert(split.right_loss == LossType::get(split.right_data->get_y()));
         parent->left_child = new Node<Float>(
             -1, parent->depth+1, split.left_data, parent
         );
@@ -286,7 +284,6 @@ public:
         parent->left_child->loss = split.left_loss;
         parent->right_child->loss = split.right_loss;
     }
-
 private:
 };
 }
@@ -304,17 +301,23 @@ public:
     Splitter(const Dataset<Float>& data, const TreeConfig& config_):
             node_counter{0}, dataset{data}, container(), config{config_} {
         Node<Float>* root{new Node<Float>(node_counter++, 0, &data)};
+        root->left_child = root->right_child = nullptr;
         if(data.is_weighted())
             root->loss = LossType::get(data.get_y(), data.get_w());
         else
             root->loss = LossType::get(data.get_y());
         expand(root);
+        if(container.empty())
+            container.emplace(root);
     }
 
     ~Splitter() {
         while(not container.empty()) {
             Node<Float>* node{container.top()};
             container.pop();
+            assert(not node->is_leaf());
+            assert(node->left_child->is_leaf());
+            assert(node->right_child->is_leaf());
             delete node->left_child;
             delete node->right_child;
             node->left_child = node->right_child = nullptr;
@@ -326,8 +329,10 @@ public:
             return nullptr;
         Node<Float>* ret{container.top()};
         container.pop();
-        expand(ret->right_child);
-        expand(ret->left_child);
+        if(not ret->is_leaf()) {
+            expand(ret->right_child);
+            expand(ret->left_child);
+        }
         return ret;
     }
 private:
@@ -395,6 +400,7 @@ public:
             node_counter{0}, dataset{data}, container(), config{config_},
             loss(data) {
         Node<Float>* root{new Node<Float>(node_counter++, 0, &data)};
+        root->left_child = root->right_child = nullptr;
         loss.set_root(root);
         container.push_back(root);
     }
@@ -405,8 +411,14 @@ public:
 
     Node<Float>* split() {
         SplitChoice<Float> split{_find_split()};
-        if(not split.valid)
+        if(not split.valid) {
+            if(not container.empty()) {
+                auto ret{container.back()};
+                container.pop_back();
+                return ret;
+            }
             return nullptr;
+        }
         Node<Float>* node{split.node};
         node->feature_idx = split.feature_idx;
         node->threshold = split.threshold;

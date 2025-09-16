@@ -156,20 +156,20 @@ public:
     }
 
     void predict(const Array<Float>& X, Array<Float>& out) const {
+        assert(root != nullptr);
         size_t n{out.size()};
         assert(n * nb_features == X.size());
         for(size_t i{0}; i < n; ++i) {
-            auto x{X.view(i*nb_features, (i+1)*nb_features)};
-            _predict(x, out[i]);
+            out[i] = _predict(X, i, n);
         }
     }
 
-    inline void _predict(const Array<Float>& x, Float& ret) const {
+    inline Float _predict(const Array<Float>& X, size_t i, size_t n) const {
         Node<Float>* node{root};
         while(not node->is_leaf()) {
             auto j{node->feature_idx};
             if(is_categorical[j]) {
-                auto modality{static_cast<int>(x[j])};
+                auto modality{static_cast<int>(X[j*n + i])};
                 if(node->left_modalities & modality)
                     node = node->left_child;
                 else if(node->right_modalities & modality)
@@ -177,13 +177,13 @@ public:
                 else
                     break;
             } else {
-                if(x[j] < node->threshold)
+                if(X[j*n + i] < node->threshold)
                     node = node->left_child;
                 else
                     node = node->right_child;
             }
         }
-        ret = node->mean_y;
+        return node->mean_y;
     }
 
     inline const Node<Float>* get_root() const {
@@ -271,7 +271,6 @@ protected:
             ++nb_splitting_nodes;
         } while(nb_splitting_nodes < config.interaction_depth);
     }
-
 };
 
 template <typename Float, typename LossType>
