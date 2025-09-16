@@ -412,6 +412,7 @@ public:
     Node<Float>* split() {
         SplitChoice<Float> split{_find_split()};
         if(not split.valid) {
+            // Make sure there is at least the root
             if(not container.empty()) {
                 auto ret{container.back()};
                 container.pop_back();

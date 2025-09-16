@@ -543,7 +543,7 @@ protected:
     std::vector<std::pair<size_t, Float>> _mod_N_pred;
 
     static inline Float _evaluate(const LorenzCurve& curve) {
-        return static_cast<Float>(.5) - curve.area();
+        return static_cast<Float>(1) - 2*curve.area();
     }
     inline Float _evaluate() const override final {
         return _evaluate(curve);
