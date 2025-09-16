@@ -1,6 +1,7 @@
 #ifndef CART_RANDOM_HPP
 #define CART_RANDOM_HPP
 
+#include <algorithm>
 #include <random>
 
 #include "array.hpp"
