@@ -243,7 +243,7 @@ cdef class Dataset:
         elif self.dtype == np.float64:
             return __Dataset_get_w[CART_FLOAT64](self.ptr)
 
-    def split(self, frac: float, shuffle: bool=True):
+    def split(self, frac: float, shuffle: bool=True) -> tuple[Dataset, Dataset]:
         assert 0. < frac < 1.
         cdef Dataset dataset1 = Dataset.__new__(Dataset)
         cdef Dataset dataset2 = Dataset.__new__(Dataset)
@@ -251,7 +251,7 @@ cdef class Dataset:
         if self.dtype == np.float32:
             CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
         else:
-            CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
+            CALL_SPLIT[CART_FLOAT64](self.ptr, &tmp, frac, shuffle)
         dataset1.ptr = tmp.first
         dataset2.ptr = tmp.second
         dataset1.dtype = dataset2.dtype = self.dtype
