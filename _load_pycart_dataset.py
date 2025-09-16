@@ -39,10 +39,8 @@ def load_data(dtype=np.float64, verbose: bool = False, nb_obs: int = 10_000,
         ])
         X = X[:, ~categorical]
     complete_dataset = Dataset(X, y, p, dtype=dtype)
-    dataset_train, dataset_valid = complete_dataset, complete_dataset
-    dataset_training, dataset_testing = complete_dataset, complete_dataset
-    # dataset_train, dataset_valid = complete_dataset.split(frac_train, shuffle=False)
-    # dataset_training, dataset_testing = dataset_train.split(frac_train, shuffle=False)
+    dataset_train, dataset_valid = complete_dataset.split(frac_train, shuffle=False)
+    dataset_training, dataset_testing = dataset_train.split(frac_train, shuffle=False)
     if verbose:
         print("db splitted !")
     return (
