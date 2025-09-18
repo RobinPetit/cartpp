@@ -353,10 +353,14 @@ class LorenzCurveError final : public TreeBasedLoss<
                                     FloatType,
                                     LorenzCurveError<FloatType, allow_crossing>
                           > {
-    typedef TreeBasedLoss<FloatType, LorenzCurveError<FloatType, allow_crossing>> ParentLoss;
+    typedef TreeBasedLoss<
+        FloatType,
+        LorenzCurveError<FloatType, allow_crossing>
+    > ParentLoss;
 public:
     using typename ParentLoss::Float;
-    LorenzCurveError(const Dataset<Float>& data): dataset{data}, curve() {
+    LorenzCurveError(const Dataset<Float>& data):
+            dataset{data}, curve() {
     }
 
     struct _Entry {
@@ -440,47 +444,56 @@ public:
             return gamma;
         }
 
-        void split_node(const Node<Float>* node) {
-            auto it{std::find_if(
-                quantiles.begin(),
-                quantiles.end(),
-                [node](const auto& entry) {
-                    return entry.node == node;
-                }
-            )};
-            assert(it != quantiles.end());
-            assert(node->left_child != nullptr);
-            assert(node->right_child != nullptr);
-            *it = {
-                node->left_child,
-                node->left_child->nb_observations,
-                node->left_child->mean_y
-            };
-            quantiles.emplace_back(
-                node->right_child,
-                node->right_child->nb_observations,
-                node->right_child->mean_y
+        inline void split_node(const Node<Float>* node) {
+            auto left{node->left_child};
+            auto right{node->right_child};
+            split_node(
+                node,
+                left,  left->nb_observations,  left->mean_y,
+                right, right->nb_observations, right->mean_y
             );
-            _sort(quantiles);
         }
-        void split_node(
+
+        inline void split_node(
                 const Node<Float>* node,
                 size_t left, Float pred_left,
                 size_t right, Float pred_right) {
+            split_node(
+                node,
+                nullptr, left, pred_left,
+                nullptr, right, pred_right
+            );
+        }
+
+        inline void split_node(
+                const Node<Float>* node,
+                const Node<Float>* left_node, size_t left, Float pred_left,
+                const Node<Float>* right_node, size_t right, Float pred_right) {
+            quantiles.emplace_back(nullptr, 0, std::numeric_limits<Float>::infinity());
             auto it{std::find_if(
-                quantiles.begin(),
-                quantiles.end(),
+                quantiles.begin()+1,
+                quantiles.end()-1,
                 [node](const auto& entry) {
                     return entry.node == node;
                 }
             )};
-            assert(it != quantiles.end());
-            assert(node->left_child == nullptr);
-            assert(node->right_child == nullptr);
-            *it = {nullptr, left, pred_left};
-            quantiles.emplace_back(nullptr, right, pred_right);
-            _sort(quantiles);
+            _Entry small_entry{left_node, left, pred_left};
+            _Entry big_entry{right_node, right, pred_right};
+            if(big_entry.pred < small_entry.pred)
+                std::swap(small_entry, big_entry);
+
+            if(small_entry.pred >= (it-1)->pred) [[unlikely]] {
+                *it = small_entry;
+            } else {
+                _insert(quantiles.begin()+1, it+1, small_entry, true);
+            }
+            if(big_entry.pred > (quantiles.end()-1)->pred) [[unlikely]] {
+                quantiles.back() = big_entry;
+            } else {
+                _insert(++it, quantiles.end(), big_entry, false);
+            }
         }
+
         inline Iterator begin() const {
             return Iterator(quantiles.begin(), N, Ey);
         }
@@ -504,7 +517,7 @@ public:
             return .5 * ret;
         }
 
-        // TODO: optimize this: profile says we spend ~80% of the time in crosses
+        // TODO: optimize this: profile says we spend ~20% of the time in crosses
         inline bool crosses(const LorenzCurve& other, Float eps=1e-8) {
             for(auto [gamma, LC_gamma] : *this)
                 if(LC_gamma > other(gamma) + eps)
@@ -516,18 +529,20 @@ public:
         size_t N;
         Float Ey;
 
-        static inline void _sort(std::vector<_Entry>& array) {
-            std::sort(
-                array.begin(), array.end(),
-                [](const auto& a, const auto& b) -> bool {
-                    return a.pred < b.pred;
+        template <typename It>
+        inline void _insert(It first, It last, _Entry const& entry, bool _) {
+            auto it{std::find_if(
+                first, last,
+                [entry](const _Entry& x) -> bool {
+                    return x.pred >= entry.pred;
                 }
-            );
+            )};
+            std::shift_right(it, last, 1);
+            *it = entry;
         }
     };
 protected:
     friend class TreeBasedLoss<Float, LorenzCurveError<Float, allow_crossing>>;
-    using ParentLoss::self;
 
     const Dataset<Float>& dataset;
 
@@ -612,11 +627,13 @@ protected:
     virtual inline Float _evaluate(uint64_t mask) override final {
         return _evaluate(mask, nullptr);
     }
+
     virtual inline Float _evaluate(
             uint64_t mask,
             std::tuple<size_t, Float, size_t, Float>& res) override final {
         return _evaluate(mask, &res);
     }
+
     Float _evaluate(
             uint64_t mask,
             std::tuple<size_t, Float, size_t, Float>* res) {
@@ -629,10 +646,7 @@ protected:
             if(mask & (1ull << mod_idx)) {
                 left_sum += _mod_N_pred[mod_idx].second;
                 left_size += _mod_N_pred[mod_idx].first;
-            } /*else {
-                right_sum += _mod_N_pred[mod_idx].second;
-                right_size += _mod_N_pred[mod_idx].first;
-            }*/
+            }
         }
         right_size = total_size - left_size;
         right_sum = total_sum - left_sum;
@@ -648,41 +662,6 @@ protected:
             std::get<3>(*res) = right_sum / right_size;
         }
         return _evaluate(splitted_curve);
-    }
-
-    static inline void _sort(std::vector<_Entry>& vec) {
-        struct {
-            inline bool operator()(_Entry const& a, _Entry const& b) const {
-                return a.pred < b.pred;
-            }
-        } _order;
-        std::sort(vec.begin(), vec.end(), _order);
-    }
-
-    static inline bool is_sorted(const std::vector<_Entry>& vec) {
-        struct {
-            inline bool operator()(_Entry const& a, _Entry const& b) const {
-                return a.pred < b.pred;
-            }
-        } _order;
-        return std::is_sorted(vec.begin(), vec.end(), _order);
-    }
-
-    static Float _evaluate_lc(
-            const std::vector<std::pair<Float, Float>>& lc, Float gamma) {
-        Float last_gamma{0};
-        Float last_LC{0};
-        for(auto [gamma_i, LC_gamma_i] : lc) {
-            if(gamma <= gamma_i) {
-                auto dx{gamma_i - last_gamma};
-                auto dy{LC_gamma_i - last_LC};
-                return LC_gamma_i + dy/dx * (gamma - last_gamma);
-                last_gamma = gamma_i;
-                last_LC = LC_gamma_i;
-            }
-        }
-        // [[unreachable]]
-        return gamma;
     }
 };
 

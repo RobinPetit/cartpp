@@ -10,7 +10,7 @@ build/
 .cache/
 __pycache__/
 *.cpp
-*.profile
+*.profile*
 .env/
 
 *.feather
