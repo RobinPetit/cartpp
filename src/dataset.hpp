@@ -132,27 +132,39 @@ public:
         );
     }
 
+    inline Float weighted_size() const {
+        assert(is_weighted());
+        return sum(_w);
+    }
+
     inline size_t size() const {
         return nb_obs;
     }
+
     inline size_t nb_features() const {
         return nb_cols;
     }
+
     inline const Array<Float>& get_X() const {
         return _X;
     }
+
     inline const Array<Float>& get_y() const {
         return _y;
     }
+
     inline const Array<bool>& get_p() const {
         return _p;
     }
+
     inline const Array<Float>& get_w() const {
         return _w;
     }
+
     inline bool is_categorical(size_t j) const {
         return not _modalities[j].empty();
     }
+
     inline bool is_weighted() const {
         return _w.size() > 0;
     }

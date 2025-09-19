@@ -29,7 +29,7 @@ template <std::floating_point Float, typename LossType>
 using CartRegressionTree = Cart::Regression::BaseRegressionTree<Float, LossType>;
 
 template <typename Float>
-static inline Cart::Dataset<Float>* _make_dataset(
+static inline Cart::Dataset<Float>* _make_dataset_no_w(
         Float* Xptr, Float* yptr, bool* pptr,
         std::vector<std::vector<std::string>>&& modalities,
         size_t n, size_t m) {
@@ -37,6 +37,20 @@ static inline Cart::Dataset<Float>* _make_dataset(
         std::move(Cart::Array<Float>(Xptr, n*m)),
         std::move(Cart::Array<Float>(yptr, n)),
         std::move(Cart::Array<bool>(pptr, n)),
+        std::move(modalities)
+    );
+}
+
+template <typename Float>
+static inline Cart::Dataset<Float>* _make_dataset(
+        Float* Xptr, Float* yptr, bool* pptr, Float* wptr,
+        std::vector<std::vector<std::string>>&& modalities,
+        size_t n, size_t m) {
+    return new Cart::Dataset<Float>(
+        std::move(Cart::Array<Float>(Xptr, n*m)),
+        std::move(Cart::Array<Float>(yptr, n)),
+        std::move(Cart::Array<bool>(pptr, n)),
+        std::move(Cart::Array<Float>(wptr, n)),
         std::move(modalities)
     );
 }

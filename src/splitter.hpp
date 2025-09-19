@@ -419,7 +419,11 @@ public:
     }
 
     Node<Float>* split() {
-        SplitChoice<Float> split{_find_split()};
+        SplitChoice<Float> split{
+            dataset.is_weighted()
+            ? _find_split<true>()
+            : _find_split<false>()
+        };
         if(not split.valid) [[unlikely]] {
             // Make sure there is at least the root
             if(container.size() == 1 and container.back()->is_root()) {
@@ -464,6 +468,7 @@ private:
 
     using Implementation = impl::Splitter<Float, LossType>;
 
+    template <bool weighted>
     SplitChoice<Float> _find_split() {
         SplitChoice<Float> best_split;
         best_split.left_data = best_split.right_data = nullptr;
@@ -481,20 +486,22 @@ private:
             if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
                 features = Random::choice(features, config.nb_covariates, false);
             for(size_t j : features)
-                find_best_split(config, node, j, best_split);
+                find_best_split<weighted>(config, node, j, best_split);
         }
         return best_split;
     }
 
+    template <bool weighted>
     void find_best_split(
             const TreeConfig& config, Node<Float>* node,
             size_t j, SplitChoice<Float>& best_split) {
         if(node->data->is_categorical(j)) {
-            find_best_split_categorical(config, node, j, best_split);
+            find_best_split_categorical<weighted>(config, node, j, best_split);
         } else {
-            find_best_split_numerical(config, node, j, best_split);
+            find_best_split_numerical<weighted>(config, node, j, best_split);
         }
     }
+    template <bool weighted>
     void find_best_split_numerical(
             const TreeConfig& config, Node<Float>* node,
             size_t j, SplitChoice<Float>& best_split) {
@@ -521,7 +528,11 @@ private:
                 continue;
             if(data->size() - idx < config.minobs)
                 break;
-            Float new_loss{loss.evaluate(y, idx)};
+            Float new_loss;
+            if constexpr(weighted)
+                new_loss = loss.evaluate(y, w, idx);
+            else
+                new_loss = loss.evaluate(y, idx);
             Float dloss{new_loss - current_loss};
             if(dloss > best_dloss) {
                 best_threshold = (Xj[idx] + prev_value) / 2;
@@ -549,6 +560,7 @@ private:
         }
     }
 
+    template <bool weighted>
     void find_best_split_categorical(
             const TreeConfig& config, Node<Float>* node,
             size_t j, SplitChoice<Float>& best_split) {

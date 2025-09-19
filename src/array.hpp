@@ -411,6 +411,15 @@ inline Array<size_t> argsort(const Array<T>& array, SortingAlgorithm method) {
     return indices;
 }
 
+template <typename T>
+inline T weighted_sum(const Array<T>& array, const Array<T>& weights) {
+    assert(array.size() == weights.size());
+    T ret{0};
+    for(size_t i{0}; i < array.size(); ++i)
+        ret += array[i]*weights[i];
+    return ret;
+}
+
 template <typename T, typename U>
 requires(std::is_convertible_v<U, T>)
 inline T _typed_sum(const Array<U>& array) {
@@ -434,7 +443,7 @@ template <std::floating_point Float>
 inline Float weighted_mean(
         const Array<Float>& array, const Array<Float>& weights) {
     Float sum{0};
-    // TODO: ensure array.size() == weights.size()
+    assert(array.size() == weights.size());
     for(size_t i{0}; i < array.size(); ++i)
         sum += array[i]*weights[i];
     return sum / static_cast<Float>(array.size());

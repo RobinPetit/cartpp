@@ -296,7 +296,10 @@ protected:
     virtual void _add_expanded_node(const Node<Float>* node) = 0;
     virtual Float  _evaluate() const = 0;  // TODO: remove?
     // For numerical splits
-    virtual Float  _evaluate(const Array<Float>& y, size_t idx) const = 0;
+    virtual Float  _evaluate(
+            const Array<Float>& y, size_t idx) const = 0;
+    virtual Float  _evaluate(
+            const Array<Float>& y, const Array<Float>& w, size_t idx) const = 0;
     // For categorical splits
     virtual Float _evaluate(uint64_t mask) = 0;
     virtual Float _evaluate(uint64_t mask,
@@ -318,6 +321,9 @@ public:
 
     inline Float evaluate(const Array<Float>& y, size_t idx) const {
         return self._evaluate(y, idx);
+    }
+    inline Float evaluate(const Array<Float>& y, const Array<Float>& w, size_t idx) const {
+        return self._evaluate(y, w, idx);
     }
     inline Float evaluate(uint64_t mask) const {
         return self._evaluate(mask);
@@ -363,9 +369,9 @@ public:
             dataset{data}, curve() {
     }
 
-    struct _Entry {
+    struct QuantileFunctionEntry {
         const Node<Float>* node;
-        size_t N;
+        Float N;
         Float pred;
     };
 
@@ -373,7 +379,7 @@ public:
     public:
         class Iterator {
         private:
-            using _BaseIterator = std::vector<_Entry>::const_iterator;
+            using _BaseIterator = std::vector<QuantileFunctionEntry>::const_iterator;
         public:
             using difference_type = long;
             using value_type = Coord<Float>;
@@ -382,11 +388,11 @@ public:
             using iterator_category = std::input_iterator_tag;
             Iterator() = delete;
             Iterator(_BaseIterator first, _BaseIterator last,
-                     size_t size, Float expected_value):
+                     Float weighted_size, Float expected_value):
                     it{first},
                     _end{last},
-                    n{0},
-                    N{size},
+                    sum_of_weights{0},
+                    tot_sum_of_weights{weighted_size},
                     LC_gamma{0},
                     Ey{expected_value},
                     last_pred{0} {
@@ -396,7 +402,7 @@ public:
                     return *this;
                 }
                 do {
-                    n += it->N;
+                    sum_of_weights += it->N;
                     LC_gamma += it->N * it->pred;
                     ++it;
                 } while(it != _end and it->pred == last_pred);
@@ -405,10 +411,10 @@ public:
                 return *this;
             }
             inline Coord<Float> operator*() const {
-                auto norm_N{static_cast<Float>(N)};
-                auto norm_LC{static_cast<Float>(Ey*N)};
+                auto norm_N{static_cast<Float>(tot_sum_of_weights)};
+                auto norm_LC{static_cast<Float>(Ey*tot_sum_of_weights)};
                 return {
-                    static_cast<Float>(n+it->N) / norm_N,
+                    static_cast<Float>(sum_of_weights + it->N) / norm_N,
                     static_cast<Float>(LC_gamma + it->N*it->pred) / norm_LC
                 };
             }
@@ -418,8 +424,8 @@ public:
         private:
             _BaseIterator it;
             _BaseIterator _end;
-            size_t n;
-            size_t N;
+            Float sum_of_weights;
+            Float tot_sum_of_weights;
             Float LC_gamma;
             Float Ey;
             Float last_pred;
@@ -428,14 +434,14 @@ public:
         LorenzCurve() = default;
         LorenzCurve(const Node<Float>* root):
                 quantiles(),
-                N{root->nb_observations},
+                sum_of_weights{root->sum_of_weights},
                 Ey{
                     (root->data == nullptr)
-                    ? root->mean_y
+                    ? root->pred
                     : mean<Float, Float>(root->data->get_y())
                 } {
             quantiles.emplace_back(nullptr, 0, Float(0.));
-            quantiles.emplace_back(root, N, Ey);
+            quantiles.emplace_back(root, sum_of_weights, Ey);
         }
         LorenzCurve(const LorenzCurve& other) = default;
         LorenzCurve(LorenzCurve&& other) = default;
@@ -461,15 +467,15 @@ public:
             auto right{node->right_child};
             split_node(
                 node,
-                left,  left->nb_observations,  left->mean_y,
-                right, right->nb_observations, right->mean_y
+                left,  left->sum_of_weights,  left->pred,
+                right, right->sum_of_weights, right->pred
             );
         }
 
         inline void split_node(
                 const Node<Float>* node,
-                size_t left, Float pred_left,
-                size_t right, Float pred_right) {
+                Float left, Float pred_left,
+                Float right, Float pred_right) {
             split_node(
                 node,
                 nullptr, left, pred_left,
@@ -479,8 +485,8 @@ public:
 
         inline void split_node(
                 const Node<Float>* node,
-                const Node<Float>* left_node, size_t left, Float pred_left,
-                const Node<Float>* right_node, size_t right, Float pred_right) {
+                const Node<Float>* left_node, Float left, Float pred_left,
+                const Node<Float>* right_node, Float right, Float pred_right) {
             quantiles.emplace_back(nullptr, 0, std::numeric_limits<Float>::infinity());
             auto it{std::find_if(
                 quantiles.begin()+1,
@@ -489,8 +495,8 @@ public:
                     return entry.node == node;
                 }
             )};
-            _Entry small_entry{left_node, left, pred_left};
-            _Entry big_entry{right_node, right, pred_right};
+            QuantileFunctionEntry small_entry{left_node, left, pred_left};
+            QuantileFunctionEntry big_entry{right_node, right, pred_right};
             if(big_entry.pred < small_entry.pred)
                 std::swap(small_entry, big_entry);
 
@@ -507,10 +513,10 @@ public:
         }
 
         inline Iterator begin() const {
-            return Iterator(quantiles.begin(), quantiles.end(), N, Ey);
+            return Iterator(quantiles.begin(), quantiles.end(), sum_of_weights, Ey);
         }
         inline Iterator end() const {
-            return Iterator(quantiles.end(), quantiles.end(), N, Ey);
+            return Iterator(quantiles.end(), quantiles.end(), sum_of_weights, Ey);
         }
 
         operator std::vector<Coord<Float>>() const {
@@ -536,15 +542,17 @@ public:
             return false;
         }
     private:
-        std::vector<_Entry> quantiles;
-        size_t N;
+        std::vector<QuantileFunctionEntry> quantiles;
+        Float sum_of_weights;
         Float Ey;
 
         template <typename It>
-        inline void _insert(It first, It last, _Entry const& entry, bool _) {
+        inline void _insert(
+                It first, It last,
+                QuantileFunctionEntry const& entry, bool _) {
             auto it{std::find_if(
                 first, last,
-                [entry](const _Entry& x) -> bool {
+                [entry](const QuantileFunctionEntry& x) -> bool {
                     return x.pred >= entry.pred;
                 }
             )};
@@ -602,10 +610,18 @@ protected:
             for(size_t k{0}; k < nb_modalities; ++k) {
                 size_t base_idx{(k == 0) ? 0 : sumcounts[k-1]};
                 size_t idx{sumcounts[k]};
-                _mod_N_pred.emplace_back(
-                    idx-base_idx,
-                    sum(y.view(base_idx, idx))
-                );
+                if(dataset.is_weighted()) {
+                    auto ws{w.view(base_idx, idx)};
+                    _mod_N_pred.emplace_back(
+                        sum(ws),
+                        weighted_sum(y.view(base_idx, idx), ws)
+                    );
+                } else {
+                    _mod_N_pred.emplace_back(
+                        idx - base_idx,
+                        sum(y.view(base_idx, idx))
+                    );
+                }
                 total_size += _mod_N_pred.back().first;
                 total_sum += _mod_N_pred.back().second;
             }
@@ -613,6 +629,28 @@ protected:
             _mod_N_pred.clear();
             nb_modalities = 0;
         }
+    }
+
+    virtual inline Float _evaluate(
+            const Array<Float>& y,
+            const Array<Float>& w,
+            size_t idx) const override final {
+        LorenzCurve splitted_curve(curve);
+        auto diff{weighted_sum<Float>(y.view(last_idx, idx), w.view(last_idx, idx))};
+        auto _this{const_cast<LorenzCurveError<Float, allow_crossing>*>(this)};
+        _this->last_idx = idx;
+        _this->left_sum += diff;
+        _this->right_sum -= diff;
+        splitted_curve.split_node(
+            current_node,
+            idx, left_sum / idx,
+            y.size() - idx, right_sum / (y.size() - idx)
+        );
+        if constexpr(not allow_crossing) {
+            if(splitted_curve.crosses(curve))
+                return -std::numeric_limits<Float>::infinity();
+        }
+        return _evaluate(splitted_curve);
     }
 
     virtual inline Float _evaluate(

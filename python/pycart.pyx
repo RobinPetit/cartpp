@@ -42,7 +42,7 @@ cdef extern from "node.hpp" namespace "Cart" nogil:
         CART_FLOAT32 loss
         CART_FLOAT32 dloss
         CART_FLOAT32 threshold
-        CART_FLOAT32 mean_y
+        CART_FLOAT32 pred
         void* parent
         void* left_child
         void* right_child
@@ -58,7 +58,7 @@ cdef extern from "node.hpp" namespace "Cart" nogil:
         CART_FLOAT64 loss
         CART_FLOAT64 dloss
         CART_FLOAT64 threshold
-        CART_FLOAT64 mean_y
+        CART_FLOAT64 pred
         void* parent
         void* left_child
         void* right_child
@@ -82,7 +82,8 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         bool normalized_dloss
 
 cdef extern from "_pycart.hpp" nogil:
-    void* _make_dataset[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
+    void* _make_dataset_no_w[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
+    void* _make_dataset[T](T*, T*, bool*, T*, vector[vector[string]], size_t, size_t)
     void _del_dataset[T](void*)
     void _save_dataset[T](void*, const char*)
     bool _is_categorical[T](void*, size_t)
@@ -144,7 +145,7 @@ cdef class Dataset:
     cdef void* ptr
     cdef type dtype
     def __init__(self, np.ndarray X, np.ndarray y,
-                 np.ndarray p, dtype=np.float32):
+                 np.ndarray p, np.ndarray w=None, dtype=np.float32):
         X = X.astype(object)
         self.ptr = NULL
         self.dtype = dtype
@@ -156,22 +157,42 @@ cdef class Dataset:
         _X = self._create_X(X, modalities)
         y = np.ascontiguousarray(y.astype(self.dtype))
         p = np.ascontiguousarray(p.astype(np.uint8))
+        if w is not None:
+            w = np.ascontiguousarray(w.astype(self.dtype))
         cdef size_t N = <size_t>(y.shape[0])
         cdef size_t nb_features = <size_t>(_X.shape[1])
         if self.dtype == np.float32:
-            self.ptr = _make_dataset[CART_FLOAT32](
-                <CART_FLOAT32*>(<CART_PTR_T>(_X.ctypes.data)),
-                <CART_FLOAT32*>(<CART_PTR_T>(y.ctypes.data)),
-                <bool*>(<CART_PTR_T>(p.ctypes.data)),
-                move(modalities), N, nb_features
-            )
+            if w is None:
+                self.ptr = _make_dataset_no_w[CART_FLOAT32](
+                    <CART_FLOAT32*>(<CART_PTR_T>(_X.ctypes.data)),
+                    <CART_FLOAT32*>(<CART_PTR_T>(y.ctypes.data)),
+                    <bool*>(<CART_PTR_T>(p.ctypes.data)),
+                    move(modalities), N, nb_features
+                )
+            else:
+                self.ptr = _make_dataset[CART_FLOAT32](
+                    <CART_FLOAT32*>(<CART_PTR_T>(_X.ctypes.data)),
+                    <CART_FLOAT32*>(<CART_PTR_T>(y.ctypes.data)),
+                    <bool*>(<CART_PTR_T>(p.ctypes.data)),
+                    <CART_FLOAT32*>(<CART_PTR_T>(w.ctypes.data)),
+                    move(modalities), N, nb_features
+                )
         elif self.dtype == np.float64:
-            self.ptr = _make_dataset[CART_FLOAT64](
-                <CART_FLOAT64*>(<CART_PTR_T>(_X.ctypes.data)),
-                <CART_FLOAT64*>(<CART_PTR_T>(y.ctypes.data)),
-                <bool*>(<CART_PTR_T>(p.ctypes.data)),
-                move(modalities), N, nb_features
-            )
+            if w is None:
+                self.ptr = _make_dataset_no_w[CART_FLOAT64](
+                    <CART_FLOAT64*>(<CART_PTR_T>(_X.ctypes.data)),
+                    <CART_FLOAT64*>(<CART_PTR_T>(y.ctypes.data)),
+                    <bool*>(<CART_PTR_T>(p.ctypes.data)),
+                    move(modalities), N, nb_features
+                )
+            else:
+                self.ptr = _make_dataset[CART_FLOAT64](
+                    <CART_FLOAT64*>(<CART_PTR_T>(_X.ctypes.data)),
+                    <CART_FLOAT64*>(<CART_PTR_T>(y.ctypes.data)),
+                    <bool*>(<CART_PTR_T>(p.ctypes.data)),
+                    <CART_FLOAT64*>(<CART_PTR_T>(w.ctypes.data)),
+                    move(modalities), N, nb_features
+                )
 
     def __dealloc__(self):
         if self.dtype == np.float32:
@@ -390,9 +411,9 @@ cdef class Node:
     @property
     def pred(self) -> float:
         if self.dtype == np.float32:
-            return (<CartNode32*>(self.ptr)).mean_y
+            return (<CartNode32*>(self.ptr)).pred
         else:
-            return (<CartNode64*>(self.ptr)).mean_y
+            return (<CartNode64*>(self.ptr)).pred
 
 
     def is_leaf(self):
@@ -579,7 +600,7 @@ cdef class RegressionTree:
 
     def get_lorenz_curves(self) -> np.ndarray:
         n = self.get_nb_internal_nodes()
-        cdef np.float64_t[:] ret = np.empty((n+1)*(n+4), dtype=np.float64)
+        cdef np.float64_t[:] ret = np.zeros((n+1)*(n+4), dtype=np.float64)
         if self.config._fp == __FloatingPoint.FLOAT32:
             _extract_lorenz_curves[CART_FLOAT32](self._tree, &ret[0])
         else:

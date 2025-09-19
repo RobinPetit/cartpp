@@ -18,7 +18,16 @@ public:
             id{id_},
             parent{parent_}, left_child{nullptr}, right_child{nullptr},
             depth{depth_}, nb_observations{dataset->size()},
-            mean_y{mean<Float, Float>(dataset->get_y())},
+            sum_of_weights{
+                dataset->is_weighted()
+                ? dataset->weighted_size()
+                : static_cast<Float>(dataset->size())
+            },
+            pred{
+                dataset->is_weighted()
+                ? weighted_mean<Float>(dataset->get_y(), dataset->get_w())
+                : mean<Float, Float>(dataset->get_y())
+            },
             data{dataset} {
     }
 
@@ -60,11 +69,12 @@ public:
 
     size_t depth;
     size_t nb_observations;
+    Float sum_of_weights;
 
     int feature_idx;
     Float loss, dloss;
     Float threshold;
-    Float mean_y;
+    Float pred;
 
     uint64_t left_modalities{0};
     uint64_t right_modalities{0};

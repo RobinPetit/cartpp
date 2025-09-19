@@ -183,7 +183,7 @@ public:
                     node = node->right_child;
             }
         }
-        return node->mean_y;
+        return node->pred;
     }
 
     inline const Node<Float>* get_root() const {
@@ -262,7 +262,7 @@ protected:
                     << ", Threshold: " << node->threshold
                     << ", DLoss: " << std::setprecision(15) << node->dloss
                     << ", Loss: " << std::setprecision(15) << node->loss
-                    << ", Mean_value: " << node->mean_y
+                    << ", Mean_value: " << node->pred
                     << ", N=" << node->nb_observations
                     << '\n';
             }
