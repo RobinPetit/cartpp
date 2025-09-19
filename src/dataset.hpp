@@ -170,14 +170,11 @@ public:
         if(not cached[j]) [[unlikely]] {
             Array<Float> Xj{get_feature_vector(j, false)};
             Array<size_t> sorted_indices{argsort(Xj)};
-            cache_sorted[j] = {
-                std::move(Xj[sorted_indices]),
-                std::move(_y[sorted_indices]),
-                std::move(_p[sorted_indices]),
-                (is_weighted() ? std::move(_w[sorted_indices]) : decltype(_w)()),
-                decltype(sorted_indices)()
-            };
-            // Make sure we don't invalidate sorted_indices
+            std::get<0>(cache_sorted[j]) = std::move(Xj[sorted_indices]);
+            std::get<1>(cache_sorted[j]) = std::move(_y[sorted_indices]);
+            std::get<2>(cache_sorted[j]) = std::move(_p[sorted_indices]);
+            if(is_weighted())
+                std::get<3>(cache_sorted[j]) = std::move(_w[sorted_indices]);
             std::get<4>(cache_sorted[j]) = std::move(sorted_indices);
             cached[j] = true;
         }

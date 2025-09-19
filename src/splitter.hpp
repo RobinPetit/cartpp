@@ -350,15 +350,24 @@ private:
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
         best_split.dloss = 0;
-        Array<bool> usable(node->data->nb_features(), false);
-        for(size_t j{0}; j < usable.size(); ++j) {
-            auto const& [Xj, y, p, w, indices] = node->data->sorted_Xypw(j);
-            usable[j] = Xj[0] != Xj[Xj.size()-1];
+        if(not node->computed_features) [[unlikely]] {
+            Array<bool> usable(node->data->nb_features(), false);
+            for(size_t j{0}; j < usable.size(); ++j) {
+                auto const& [Xj, y, p, w, indices] = node->data->sorted_Xypw(j);
+                usable[j] = Xj[0] != Xj[Xj.size()-1];
+            }
+            node->features = where(usable);
+            if(config.nb_covariates != 0 and
+                    node->features.size() > config.nb_covariates) {
+                node->features = Random::choice(
+                    node->features,
+                    config.nb_covariates,
+                    false  /* replacement */
+                );
+            }
+            node->computed_features = true;
         }
-        Array<size_t> features{where(usable)};
-        if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
-            features = Random::choice(features, config.nb_covariates, false);
-        for(size_t j : features) {
+        for(size_t j : node->features) {
             if(node->data->is_weighted()) {
                 Implementation::template find_best_split<true, normalized_dloss>(
                     config, node, j, node->loss, best_split
@@ -411,14 +420,15 @@ public:
 
     Node<Float>* split() {
         SplitChoice<Float> split{_find_split()};
-        if(not split.valid) {
+        if(not split.valid) [[unlikely]] {
             // Make sure there is at least the root
-            if(not container.empty()) {
+            if(container.size() == 1 and container.back()->is_root()) {
                 auto ret{container.back()};
                 container.pop_back();
                 return ret;
+            } else {
+                return nullptr;
             }
-            return nullptr;
         }
         Node<Float>* node{split.node};
         node->feature_idx = split.feature_idx;
@@ -458,17 +468,15 @@ private:
         SplitChoice<Float> best_split;
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
-        best_split.dloss = 0;
+        best_split.dloss = 1e-12;
         best_split.node = nullptr;
-        for(auto node : container) {
+        for(Node<Float>* node : container) {
             if(node->depth == config.max_depth)
                 continue;
             loss.new_node(node);
             Array<bool> usable(dataset.nb_features(), false);
-            for(size_t j{0}; j < usable.size(); ++j) {
-                auto const& [Xj, y, p, w, indices] = node->data->sorted_Xypw(j);
-                usable[j] = Xj[0] != Xj[Xj.size()-1];
-            }
+            for(size_t j{0}; j < usable.size(); ++j)
+                usable[j] = node->data->not_all_equal(j);
             Array<size_t> features{where(usable)};
             if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
                 features = Random::choice(features, config.nb_covariates, false);

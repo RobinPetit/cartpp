@@ -70,6 +70,9 @@ public:
     uint64_t right_modalities{0};
 
     const Dataset<Float>* data;
+
+    Array<size_t> features;
+    bool computed_features{false};
 };
 }
 
