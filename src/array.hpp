@@ -257,6 +257,9 @@ public:
         case SortingAlgorithm::MERGESORT:
             mergesort(comp);
             break;
+        case SortingAlgorithm::QUICKSORT_3WAY:
+            quicksort_3way(comp);
+            break;
         }
     }
 
@@ -281,6 +284,38 @@ protected:
         ConstArrayIterator ret{begin()};
         ret += pos;
         return ret;
+    }
+
+    template <typename Comp>
+    static inline std::pair<size_t, size_t> partition_3way(
+            T* data, size_t beg, size_t end, const Comp& comp) {
+        size_t i{beg};
+        size_t j{beg+1};
+        size_t k{end};
+        auto pivot{data[beg]};  // TODO: choose at random?
+        while(j < k) {
+            if(comp(data[j], pivot)) {
+                std::swap(data[j++], data[i++]);
+            } else if(comp(pivot, data[j])) {
+                std::swap(data[--k], data[j]);
+            } else {
+                ++j;
+            }
+        }
+        return {i, k};
+    }
+    template <typename Comp>
+    static inline void quicksort_3way(
+            T* data, size_t beg, size_t end, const Comp& comp) {
+        if(end <= beg) [[unlikely]]
+            return;
+        auto [pivot_left, pivot_right] = partition_3way(data, beg, end, comp);
+        quicksort_3way(data, beg, pivot_left, comp);
+        quicksort_3way(data, pivot_right, end, comp);
+    }
+    template <typename Comp>
+    inline void quicksort_3way(const Comp& comp) {
+        quicksort_3way(data, 0, size(), comp);
     }
 
     template <typename Comp>
@@ -363,18 +398,16 @@ struct _ArgsortKey {
 }
 
 template <typename T>
-inline Array<size_t> argsort(const Array<T>& array) {
+inline Array<size_t> argsort(const Array<T>& array, SortingAlgorithm method) {
     Array<size_t> indices{range(0, array.size())};
     impl::_ArgsortKey<T> key(array);
-    indices.sort(SortingAlgorithm::MERGESORT, key);
-    if(indices[0] >= indices.size())
-        throw std::runtime_error("");
-    for(size_t i{1}; i < indices.size(); ++i) {
-        if(indices[i] >= array.size())
-            throw std::runtime_error("");
-        if(array[indices[i-1]] > array[indices[i]])
-            throw std::runtime_error("");
-    }
+    indices.sort(method, key);
+    // assert(std::is_sorted(
+    //     indices.begin(), indices.end(),
+    //     [&array](size_t i, size_t j) -> bool {
+    //         return array[i] < array[j];
+    //     }
+    // ));
     return indices;
 }
 

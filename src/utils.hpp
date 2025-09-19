@@ -22,7 +22,8 @@ concept SortKey = requires(
 
 // TODO: add quicksort (especially 3-way partitioning) and compare computation time
 enum class SortingAlgorithm : int {
-    MERGESORT
+    MERGESORT,
+    QUICKSORT_3WAY
 };
 
 template <typename T>

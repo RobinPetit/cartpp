@@ -169,7 +169,12 @@ public:
         assert(_cache_sorted.size() > j);
         if(not cached[j]) [[unlikely]] {
             Array<Float> Xj{get_feature_vector(j, false)};
-            Array<size_t> sorted_indices{argsort(Xj)};
+            SortingAlgorithm method{
+                is_categorical(j)
+                ? SortingAlgorithm::QUICKSORT_3WAY
+                : SortingAlgorithm::MERGESORT
+            };
+            Array<size_t> sorted_indices{argsort(Xj, method)};
             std::get<0>(cache_sorted[j]) = std::move(Xj[sorted_indices]);
             std::get<1>(cache_sorted[j]) = std::move(_y[sorted_indices]);
             std::get<2>(cache_sorted[j]) = std::move(_p[sorted_indices]);
