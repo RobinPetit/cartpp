@@ -381,17 +381,27 @@ public:
             using reference = value_type&;
             using iterator_category = std::input_iterator_tag;
             Iterator() = delete;
-            Iterator(_BaseIterator iterator, size_t size, Float expected_value):
-                    it{iterator},
+            Iterator(_BaseIterator first, _BaseIterator last,
+                     size_t size, Float expected_value):
+                    it{first},
+                    _end{last},
                     n{0},
                     N{size},
                     LC_gamma{0},
-                    Ey{expected_value} {
+                    Ey{expected_value},
+                    last_pred{0} {
             }
             inline Iterator& operator++() {
-                n += it->N;
-                LC_gamma += it->N * it->pred;
-                ++it;
+                if(it == _end) [[unlikely]] {
+                    return *this;
+                }
+                do {
+                    n += it->N;
+                    LC_gamma += it->N * it->pred;
+                    ++it;
+                } while(it != _end and it->pred == last_pred);
+                assert(it == _end or it->pred != last_pred);
+                last_pred = it->pred;
                 return *this;
             }
             inline Coord<Float> operator*() const {
@@ -407,10 +417,12 @@ public:
             }
         private:
             _BaseIterator it;
+            _BaseIterator _end;
             size_t n;
             size_t N;
             Float LC_gamma;
             Float Ey;
+            Float last_pred;
         };
 
         LorenzCurve() = default;
@@ -495,10 +507,10 @@ public:
         }
 
         inline Iterator begin() const {
-            return Iterator(quantiles.begin(), N, Ey);
+            return Iterator(quantiles.begin(), quantiles.end(), N, Ey);
         }
         inline Iterator end() const {
-            return Iterator(quantiles.end(), N, Ey);
+            return Iterator(quantiles.end(), quantiles.end(), N, Ey);
         }
 
         operator std::vector<Coord<Float>>() const {
@@ -517,7 +529,6 @@ public:
             return .5 * ret;
         }
 
-        // TODO: optimize this: profile says we spend ~20% of the time in crosses
         inline bool crosses(const LorenzCurve& other, Float eps=1e-8) {
             for(auto [gamma, LC_gamma] : *this)
                 if(LC_gamma > other(gamma) + eps)
