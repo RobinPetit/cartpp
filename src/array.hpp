@@ -443,10 +443,13 @@ template <std::floating_point Float>
 inline Float weighted_mean(
         const Array<Float>& array, const Array<Float>& weights) {
     Float sum{0};
+    Float den{0};
     assert(array.size() == weights.size());
-    for(size_t i{0}; i < array.size(); ++i)
+    for(size_t i{0}; i < array.size(); ++i) {
         sum += array[i]*weights[i];
-    return sum / static_cast<Float>(array.size());
+        den += weights[i];
+    }
+    return sum / den;
 }
 
 template <std::floating_point Float, bool value>
