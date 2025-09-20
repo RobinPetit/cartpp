@@ -9,6 +9,14 @@
 typedef std::streamsize ssize_t;
 #endif
 
+#if defined(__cpp_lib_unreachable) && __cpp_lib_unreachable >= 202202L
+#define CARTPP_UNREACHABLE std::unreachable();
+#elif defined(__GNUC__)
+#define CARTPP_UNREACHABLE __builtin_unreachable();
+#else
+#define CARTPP_UNREACHABLE /* [[unreachable]] */
+#endif
+
 namespace Cart {
 
 #define ssizeof(x) static_cast<ssize_t>(sizeof(x))
@@ -20,7 +28,6 @@ concept SortKey = requires(
     {m(ptr, i, j)} -> std::same_as<bool>;
 };
 
-// TODO: add quicksort (especially 3-way partitioning) and compare computation time
 enum class SortingAlgorithm : int {
     MERGESORT,
     QUICKSORT_3WAY

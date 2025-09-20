@@ -169,7 +169,7 @@ public:
         while(not node->is_leaf()) {
             auto j{node->feature_idx};
             if(is_categorical[j]) {
-                auto modality{static_cast<int>(X[j*n + i])};
+                auto modality{1 << static_cast<int>(X[j*n + i])};
                 if(node->left_modalities & modality)
                     node = node->left_child;
                 else if(node->right_modalities & modality)

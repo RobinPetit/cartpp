@@ -100,8 +100,13 @@ public:
         self._diminish(other_loss);
         precomputed = false;
     }
+
     inline size_t size() const {
         return n;
+    }
+
+    inline Float weighted_size() const {
+        return sum_of_weights;
     }
 };
 
@@ -120,12 +125,12 @@ protected: \
     using ParentLoss::self; \
 public: \
     using typename ParentLoss::Float; \
-    static Float get(const Array<Float>& ys) { \
+    static inline Float get(const Array<Float>& ys) { \
         NAME<Float> loss; \
         loss.augment(ys); \
         return loss; \
     } \
-    static Float get(const Array<Float>& ys, const Array<Float>& ws) { \
+    static inline Float get(const Array<Float>& ys, const Array<Float>& ws) { \
         NAME<Float> loss; \
         loss.augment(ys, ws); \
         return loss; \
@@ -146,7 +151,7 @@ protected:
     Float weighted_sum_squares;
 
     inline Float compute() const override final {
-        Float mu{unweighted_sum / n};
+        Float mu{weighted_sum / sum_of_weights};
         Float ret{
             weighted_sum_squares
             - 2 * mu * weighted_sum
@@ -216,8 +221,7 @@ protected:
     Float unweighted_sum;
 
     inline Float compute() const override final {
-        assert(n > 0);
-        Float mu{unweighted_sum / static_cast<Float>(n)};
+        Float mu{weighted_sum / sum_of_weights};
         if(mu == 0)
             return 0;
         Float ret{sum_wi_when_y[0]*mu};
@@ -377,60 +381,6 @@ public:
 
     class LorenzCurve final {
     public:
-        class Iterator {
-        private:
-            using _BaseIterator = std::vector<QuantileFunctionEntry>::const_iterator;
-        public:
-            using difference_type = long;
-            using value_type = Coord<Float>;
-            using pointer = value_type*;
-            using reference = value_type&;
-            using iterator_category = std::input_iterator_tag;
-            Iterator() = delete;
-            Iterator(_BaseIterator first, _BaseIterator last,
-                     Float weighted_size, Float expected_value):
-                    it{first},
-                    _end{last},
-                    sum_of_weights{0},
-                    tot_sum_of_weights{weighted_size},
-                    LC_gamma{0},
-                    Ey{expected_value},
-                    last_pred{0} {
-            }
-            inline Iterator& operator++() {
-                if(it == _end) [[unlikely]] {
-                    return *this;
-                }
-                do {
-                    sum_of_weights += it->N;
-                    LC_gamma += it->N * it->pred;
-                    ++it;
-                } while(it != _end and it->pred == last_pred);
-                assert(it == _end or it->pred != last_pred);
-                last_pred = it->pred;
-                return *this;
-            }
-            inline Coord<Float> operator*() const {
-                auto norm_N{static_cast<Float>(tot_sum_of_weights)};
-                auto norm_LC{static_cast<Float>(Ey*tot_sum_of_weights)};
-                return {
-                    static_cast<Float>(sum_of_weights + it->N) / norm_N,
-                    static_cast<Float>(LC_gamma + it->N*it->pred) / norm_LC
-                };
-            }
-            inline bool operator==(const Iterator& other) const {
-                return it == other.it;
-            }
-        private:
-            _BaseIterator it;
-            _BaseIterator _end;
-            Float sum_of_weights;
-            Float tot_sum_of_weights;
-            Float LC_gamma;
-            Float Ey;
-            Float last_pred;
-        };
-
         LorenzCurve() = default;
         LorenzCurve(const Node<Float>* root):
                 quantiles(),
@@ -458,7 +408,7 @@ public:
                 last_gamma = gamma_i;
                 LC_last_gamma = LC_gamma_i;
             }
-            // [[unreachable]]
+            CARTPP_UNREACHABLE
             return gamma;
         }
 
@@ -503,20 +453,21 @@ public:
             if(small_entry.pred >= (it-1)->pred) [[unlikely]] {
                 *it = small_entry;
             } else {
-                _insert(quantiles.begin()+1, it+1, small_entry, true);
+                _insert(quantiles.begin()+1, it+1, small_entry);
             }
             if(big_entry.pred > (quantiles.end()-1)->pred) [[unlikely]] {
                 quantiles.back() = big_entry;
             } else {
-                _insert(++it, quantiles.end(), big_entry, false);
+                _insert(++it, quantiles.end(), big_entry);
             }
+            precomputed = false;
         }
 
-        inline Iterator begin() const {
-            return Iterator(quantiles.begin(), quantiles.end(), sum_of_weights, Ey);
+        inline auto begin() const {
+            return get_lc().begin();
         }
-        inline Iterator end() const {
-            return Iterator(quantiles.end(), quantiles.end(), sum_of_weights, Ey);
+        inline auto end() const {
+            return get_lc().end();
         }
 
         operator std::vector<Coord<Float>>() const {
@@ -543,16 +494,49 @@ public:
         }
     private:
         std::vector<QuantileFunctionEntry> quantiles;
+        std::vector<Coord<Float>> _precomputed_lc;
+        bool precomputed{false};
         Float sum_of_weights;
         Float Ey;
+
+        inline const std::vector<Coord<Float>>& get_lc() const {
+            if(not precomputed) [[unlikely]]
+                _compute();
+            return _precomputed_lc;
+        }
+
+        inline void _compute() const {
+            auto& lc{const_cast<std::vector<Coord<Float>>&>(_precomputed_lc)};
+            lc.clear();
+            lc.reserve(quantiles.size());
+            lc.emplace_back(0, 0);
+            Float last_pred{0};
+            for(auto it{quantiles.begin()}; it != quantiles.end(); ++it) {
+                if(it->pred == last_pred) {
+                    lc.back().first += it->N;
+                    lc.back().second += it->pred*it->N;
+                } else {
+                    last_pred = it->pred;
+                    lc.emplace_back(
+                        lc.back().first + it->N,
+                        lc.back().second + it->pred*it->N
+                    );
+                }
+            }
+            for(auto& [gamma, LC_gamma] : lc) {
+                gamma /= sum_of_weights;
+                LC_gamma /= sum_of_weights*Ey;
+            }
+            const_cast<bool&>(precomputed) = true;
+        }
 
         template <typename It>
         inline void _insert(
                 It first, It last,
-                QuantileFunctionEntry const& entry, bool _) {
+                QuantileFunctionEntry const& entry) {
             auto it{std::find_if(
                 first, last,
-                [entry](const QuantileFunctionEntry& x) -> bool {
+                [&entry](const QuantileFunctionEntry& x) -> bool {
                     return x.pred >= entry.pred;
                 }
             )};
