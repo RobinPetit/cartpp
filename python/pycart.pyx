@@ -600,7 +600,7 @@ cdef class RegressionTree:
 
     def get_lorenz_curves(self) -> np.ndarray:
         n = self.get_nb_internal_nodes()
-        cdef np.float64_t[:] ret = np.zeros((n+1)*(n+4), dtype=np.float64)
+        cdef np.float64_t[:] ret = np.ones((n+1)*(n+4), dtype=np.float64)
         if self.config._fp == __FloatingPoint.FLOAT32:
             _extract_lorenz_curves[CART_FLOAT32](self._tree, &ret[0])
         else:

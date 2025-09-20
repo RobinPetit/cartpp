@@ -132,11 +132,11 @@ public:
             if(loss_left.size() < config.minobs or loss_right.size() < config.minobs)
                 continue;
             Float dloss{
-                data->size() * current_loss
-                - (loss_left.size() * loss_left + loss_right.size() * loss_right)
+                data->weighted_size() * current_loss
+                - (loss_left.weighted_size() * loss_left + loss_right.weighted_size() * loss_right)
             };
             if constexpr(normalized_dloss)
-                dloss /= data->size();
+                dloss /= data->weighted_size();
             if(dloss > best_dloss) {
                 best_dloss = dloss;
                 best_mask = _mask;
@@ -233,11 +233,11 @@ public:
             assert(idx > 0);
             assert(idx < y.size());
             Float dloss{
-                data->size() * current_loss
-                - (idx*left_loss + (data->size()-idx)*right_loss)
+                data->weighted_size() * current_loss
+                - (left_loss.weighted_size()*left_loss + right_loss.weighted_size()*right_loss)
             };
             if constexpr(normalized_dloss)
-                dloss /= data->size();
+                dloss /= data->weighted_size();
             if(dloss > best_dloss) {
                 best_dloss = dloss;
                 best_threshold = (prev_value + Xj[idx]) / static_cast<Float>(2);
@@ -330,8 +330,8 @@ public:
         Node<Float>* ret{container.top()};
         container.pop();
         if(not ret->is_leaf()) {
-            expand(ret->right_child);
             expand(ret->left_child);
+            expand(ret->right_child);
         }
         return ret;
     }

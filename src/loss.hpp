@@ -221,13 +221,11 @@ protected:
     Float unweighted_sum;
 
     inline Float compute() const override final {
-        Float mu{weighted_sum / sum_of_weights};
-        if(mu == 0)
+        if(weighted_sum == 0) [[unlikely]]
             return 0;
+        Float mu{weighted_sum / sum_of_weights};
         Float ret{sum_wi_when_y[0]*mu};
-        Float sum_of_weights{sum_wi_when_y[0]};
         for(size_t y{1}; y <= max_y; ++y) {
-            sum_of_weights += sum_wi_when_y[y];
             ret += sum_wi_when_y[y]*(y*std::log(y / mu) + mu - y);
         }
         return 2 * ret / sum_of_weights;
@@ -240,15 +238,19 @@ protected:
             sum_wi_when_y[static_cast<int>(ys[i])] += 1;
             unweighted_sum += ys[i];
         }
+        weighted_sum = unweighted_sum;
+        sum_of_weights += ys.size();
     }
     inline void _augment(const Array<Float>& ys,
                          const Array<Float>& ws) override final {
         _update_max_y(ys);
         if(max_y >= sum_wi_when_y.size())
-            sum_wi_when_y.resize(max_y+1);
+            sum_wi_when_y.resize(max_y+1, 0.);
         for(size_t i{0}; i < ys.size(); ++i) {
             sum_wi_when_y[static_cast<int>(ys[i])] += ws[i];
             unweighted_sum += ys[i];
+            weighted_sum += ys[i]*ws[i];
+            sum_of_weights += ws[i];
         }
     }
     inline void _augment(const PoissonDeviance<Float>& other_loss) override final {
@@ -258,25 +260,32 @@ protected:
         for(size_t y{0}; y <= other_loss.max_y; ++y)
             sum_wi_when_y[y] += other_loss.sum_wi_when_y[y];
         unweighted_sum += other_loss.unweighted_sum;
-        precomputed = false;
+        weighted_sum += other_loss.weighted_sum;
+        sum_of_weights += other_loss.sum_of_weights;
     }
     inline void _diminish(const Array<Float>& ys) override final {
         for(size_t i{0}; i < ys.size(); ++i) {
             sum_wi_when_y[static_cast<int>(ys[i])] -= 1;
             unweighted_sum -= ys[i];
         }
+        weighted_sum = unweighted_sum;
+        sum_of_weights -= ys.size();
     }
     inline void _diminish(const Array<Float>& ys,
                           const Array<Float>& ws) override final {
         for(size_t i{0}; i < ys.size(); ++i) {
             sum_wi_when_y[static_cast<int>(ys[i])] -= ws[i];
             unweighted_sum -= ys[i];
+            weighted_sum -= ys[i]*ws[i];
+            sum_of_weights -= ws[i];
         }
     }
     inline void _diminish(const PoissonDeviance<Float>& other_loss) override final {
         for(size_t y{0}; y <= other_loss.max_y; ++y)
             sum_wi_when_y[y] -= other_loss.sum_wi_when_y[y];
         unweighted_sum -= other_loss.unweighted_sum;
+        weighted_sum -= other_loss.unweighted_sum;
+        sum_of_weights -= other_loss.sum_of_weights;
     }
     inline void _update_max_y(const Array<Float>& ys) {
         auto max_y_in_sample{static_cast<size_t>(

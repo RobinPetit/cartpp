@@ -166,13 +166,18 @@ static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
     size_t i{0};
     using Loss = Cart::Loss::LorenzCurveError<Float>;
     using RT = Cart::Regression::BaseRegressionTree<Float, Loss>;
-    auto tree{static_cast<RT*>(_tree)};
+    RT* tree{static_cast<RT*>(_tree)};
     auto lcs{Cart::Loss::_consecutive_lcs(tree->get_internal_nodes())};
+    size_t idx{0};
+    size_t n{2};
     for(auto const& lc : lcs) {
+        i = idx;
         for(auto [gamma, LC_gamma] : lc) {
             out[i++] = static_cast<CART_FLOAT64>(gamma);
             out[i++] = static_cast<CART_FLOAT64>(LC_gamma);
         }
+        idx += 2*n;
+        ++n;
     }
 }
 
