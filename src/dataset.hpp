@@ -20,6 +20,7 @@ public:
             nb_obs{other.nb_obs}, nb_cols{other.nb_cols},
             _X(std::move(other._X)), _y(std::move(other._y)),
             _p(std::move(other._p)), _w(std::move(other._w)),
+            sum_of_weights{sum(_w)},
             __modalities(std::move(other._modalities)),
             _modalities{__modalities},
             _cache_sorted(std::move(other._cache_sorted)) {
@@ -28,6 +29,7 @@ public:
                 std::vector<std::vector<std::string>>&& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(std::move(w)),
+            sum_of_weights{sum(_w)},
             __modalities(std::move(modalities)),
             _modalities{__modalities},
             _cache_sorted() {
@@ -36,6 +38,7 @@ public:
                 std::vector<std::vector<std::string>>&& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(0),
+            sum_of_weights{0},
             __modalities(std::move(modalities)),
             _modalities{__modalities},
             _cache_sorted() {
@@ -44,12 +47,14 @@ public:
                 std::vector<std::vector<std::string>>& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(std::move(w)),
+            sum_of_weights{sum(_w)},
             __modalities(), _modalities{modalities} {
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p,
                 std::vector<std::vector<std::string>>& modalities):
             nb_obs{y.size()}, nb_cols{X.size() / y.size()},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(0),
+            sum_of_weights{0},
             __modalities(), _modalities{modalities}, _cache_sorted() {
     }
 
@@ -133,8 +138,10 @@ public:
     }
 
     inline Float weighted_size() const {
-        assert(is_weighted());
-        return sum(_w);
+        if(is_weighted())
+            return sum_of_weights;
+        else
+            return size();
     }
 
     inline size_t size() const {
@@ -222,6 +229,7 @@ public:
                 _modalities
             );
         }
+        assert(is_weighted());
     }
     inline Dataset<Float>* sample(size_t k, bool replace) const {
         Array<size_t> indices{Random::choice(size(), k, replace)};
@@ -257,6 +265,7 @@ private:
     Array<Float> _y;
     Array<bool> _p;
     Array<Float> _w;
+    Float sum_of_weights;
     std::vector<std::vector<std::string>> __modalities;
     std::vector<std::vector<std::string>>& _modalities;
     std::vector<
