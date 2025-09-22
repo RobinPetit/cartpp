@@ -213,4 +213,12 @@ static inline void _extract_duplicate_predictions(void* _tree, Int32_t* out) {
     }
 }
 
+template <std::floating_point Float>
+static inline void __prepare_dataset_to_avoid_race_conditions(void* _dataset) {
+    auto dataset{static_cast<Cart::Dataset<Float>*>(_dataset)};
+    for(size_t j{0}; j < dataset->nb_features(); ++j) {
+        static_cast<void>(dataset->sorted_Xypw(j));
+    }
+}
+
 #endif

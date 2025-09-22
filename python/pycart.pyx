@@ -141,6 +141,7 @@ cdef extern from "_pycart.hpp" nogil:
     void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
     void _extract_lorenz_curves_crossings[T](void* tree, np.int32_t* out)
     void _extract_duplicate_predictions[T](void* tree, np.int32_t* out)
+    void __prepare_dataset_to_avoid_race_conditions[T](void* _dataset)
 
 cdef class Dataset:
     cdef void* ptr
@@ -738,7 +739,12 @@ cdef class RandomForest:
     def __iter__(self):
         return iter(self.trees)
 
-    def fit(self, dataset):
+    def fit(self, Dataset dataset):
+        if not self.config._config.bootstrap:
+            if self.config._fp == __FloatingPoint.FLOAT32:
+                __prepare_dataset_to_avoid_race_conditions[CART_FLOAT32](dataset.ptr)
+            else:
+                __prepare_dataset_to_avoid_race_conditions[CART_FLOAT64](dataset.ptr)
         Parallel(n_jobs=self.n_jobs)(
             delayed(regressor_call)(
                 self.trees[i].fit, dataset
@@ -747,7 +753,11 @@ cdef class RandomForest:
         )
         self.fitted = True
 
-    def recalibrate(self, dataset):
+    def recalibrate(self, Dataset dataset):
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            __prepare_dataset_to_avoid_race_conditions[CART_FLOAT32](dataset.ptr)
+        else:
+            __prepare_dataset_to_avoid_race_conditions[CART_FLOAT64](dataset.ptr)
         Parallel(n_jobs=self.n_jobs)(
             delayed(regressor_call)(
                 self.trees[i].recalibrate, dataset

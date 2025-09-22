@@ -103,7 +103,9 @@ private:
 public:
     typedef GenericArrayIterator<      T>      ArrayIterator;
     typedef GenericArrayIterator<const T> ConstArrayIterator;
-    Array(): Array(0) {}
+    Array():
+            data{nullptr}, n{0}, owns_data{false} {
+    }
     Array(size_t size):
             data{new T[size]}, n{size}, owns_data{true} {
     }
