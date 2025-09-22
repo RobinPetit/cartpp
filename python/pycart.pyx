@@ -611,13 +611,14 @@ cdef class RegressionTree:
                 )
             return np.asarray(_ret64)
 
-    def get_lorenz_curves(self) -> Iterable:
+    def get_lorenz_curves(self):
         cdef int n = self.get_nb_internal_nodes()
-        cdef np.float64_t[:] lcs = np.ones((n+1)*(n+4), dtype=np.float64)
+        cdef np.ndarray lcs = np.ones((n+1)*(n+4), dtype=np.float64)
+        cdef np.float64_t[:] _lcs = lcs
         if self.config._fp == __FloatingPoint.FLOAT32:
-            _extract_lorenz_curves[CART_FLOAT32](self._tree, &lcs[0])
+            _extract_lorenz_curves[CART_FLOAT32](self._tree, &_lcs[0])
         else:
-            _extract_lorenz_curves[CART_FLOAT64](self._tree, &lcs[0])
+            _extract_lorenz_curves[CART_FLOAT64](self._tree, &_lcs[0])
         cdef int idx = 0
         cdef int length = 4
         cdef int end = 0
@@ -699,7 +700,7 @@ def print_dt(tree: RegressionTree, dataset: Dataset):
 def Parallel(n_jobs):
     return _Parallel(n_jobs=n_jobs, backend='threading', prefer='threads')
 
-def regressor_fit(callback, dataset):
+def regressor_call(callback, dataset):
     callback(dataset)
 
 def regressor_predict(callback, X, out, lock):
@@ -739,12 +740,20 @@ cdef class RandomForest:
 
     def fit(self, dataset):
         Parallel(n_jobs=self.n_jobs)(
-            delayed(regressor_fit)(
+            delayed(regressor_call)(
                 self.trees[i].fit, dataset
             )
             for i in range(len(self.trees))
         )
         self.fitted = True
+
+    def recalibrate(self, dataset):
+        Parallel(n_jobs=self.n_jobs)(
+            delayed(regressor_call)(
+                self.trees[i].recalibrate, dataset
+            )
+            for i in range(len(self.trees))
+        )
 
     def predict(self, X):
         assert self.fitted
