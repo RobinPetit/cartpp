@@ -441,12 +441,16 @@ inline T sum(const Array<T>& array) {
 
 template <typename T, std::floating_point Float=double>
 inline Float mean(const Array<T>& array) {
+    if(array.size() == 0) [[unlikely]]
+        return Float(0);
     return _typed_sum<Float, T>(array) / static_cast<Float>(array.size());
 }
 
 template <std::floating_point Float>
 inline Float weighted_mean(
         const Array<Float>& array, const Array<Float>& weights) {
+    if(array.size() == 0) [[unlikely]]
+        return Float(0);
     Float sum{0};
     Float den{0};
     assert(array.size() == weights.size());

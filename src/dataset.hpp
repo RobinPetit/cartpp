@@ -14,6 +14,15 @@
 #include "utils.hpp"
 
 namespace Cart {
+namespace {
+template <std::floating_point Float>
+static inline size_t __nb_f__(const Array<Float>& X, const Array<Float>& y) {
+    return y.size() > 0
+        ? X.size() / y.size()
+        : 0;
+}
+}
+
 template <typename Float>
 class Dataset final {
 public:
@@ -29,7 +38,7 @@ public:
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p, Array<Float>&& w,
                 std::vector<std::vector<std::string>>&& modalities):
-            nb_obs{y.size()}, nb_cols{X.size() / y.size()},
+            nb_obs{y.size()}, nb_cols{__nb_f__(X, y)},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(std::move(w)),
             sum_of_weights{sum(_w)},
             __modalities(std::move(modalities)),
@@ -38,7 +47,7 @@ public:
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p,
                 std::vector<std::vector<std::string>>&& modalities):
-            nb_obs{y.size()}, nb_cols{X.size() / y.size()},
+            nb_obs{y.size()}, nb_cols{__nb_f__(X, y)},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(0),
             sum_of_weights{0},
             __modalities(std::move(modalities)),
@@ -47,14 +56,14 @@ public:
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p, Array<Float>&& w,
                 std::vector<std::vector<std::string>>& modalities):
-            nb_obs{y.size()}, nb_cols{X.size() / y.size()},
+            nb_obs{y.size()}, nb_cols{__nb_f__(X, y)},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(std::move(w)),
             sum_of_weights{sum(_w)},
             __modalities(), _modalities{modalities} {
     }
     Dataset(Array<Float>&& X, Array<Float>&& y, Array<bool>&& p,
                 std::vector<std::vector<std::string>>& modalities):
-            nb_obs{y.size()}, nb_cols{X.size() / y.size()},
+            nb_obs{y.size()}, nb_cols{__nb_f__(X, y)},
             _X(std::move(X)), _y(std::move(y)), _p(std::move(p)), _w(0),
             sum_of_weights{0},
             __modalities(), _modalities{modalities}, _cache_sorted() {
