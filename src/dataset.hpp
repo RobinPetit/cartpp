@@ -1,9 +1,11 @@
 #ifndef CART_DATASET_HPP
 #define CART_DATASET_HPP
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 #include <ios>
+#include <iterator>
 #include <stdexcept>
 #include <vector>
 
@@ -267,9 +269,9 @@ public:
             int j, Float threshold) const {
         assert(not is_categorical(j));
         auto [Xj, y, p, w, indices] = sorted_Xypw(j);
-        auto it{std::lower_bound(Xj.begin(), Xj.end(), threshold)};
-        assert(it != Xj.end());
-        auto idx{static_cast<size_t>(std::distance(Xj.begin(), it))};
+        auto it{std::lower_bound(Xj.cbegin(), Xj.cend(), threshold)};
+        assert(it != Xj.cend());
+        auto idx{static_cast<size_t>(std::distance(Xj.cbegin(), it))};
         return {
             at(indices.view(0, idx)),
             at(indices.view(idx, indices.size()))

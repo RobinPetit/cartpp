@@ -24,15 +24,20 @@ private:
     template <typename VecType>
     struct GenericArrayIterator {
     public:
-        using value_type = T;
+        using value_type = VecType;
         using reference = value_type&;
         using pointer = value_type*;
         using difference_type = std::ptrdiff_t;
 
-        GenericArrayIterator(VecType* vec):
+        GenericArrayIterator(pointer vec):
             vector{vec}, i{0} {
         }
-        inline VecType& operator*() {
+
+        inline reference operator*() {
+            return vector[i];
+        }
+
+        inline std::add_const_t<value_type>& operator*() const {
             return vector[i];
         }
         // Post-decrement
@@ -88,7 +93,7 @@ private:
                 and i == other.i;
         }
     private:
-        VecType* vector;
+        pointer vector;
         ssize_t i;
     };
 private:
