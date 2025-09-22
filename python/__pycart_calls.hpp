@@ -153,7 +153,9 @@ static inline void CALL_GET_FEATURE_IMPORTANCE_TREE(void* tree, void* array, __F
 }
 
 static inline void CALL_GET_ROOT_TREE(void* tree, void** ret, __FloatingPoint fp, __Loss loss) {
-#define GET_ROOT(F, L) *ret = static_cast<void*>(const_cast<Cart::Node<F>*>(static_cast<BRT(F, L)*>(tree)->get_root()))
+#define GET_ROOT(F, L) do { \
+            *ret = static_cast<void*>(const_cast<Cart::Node<F>*>(static_cast<BRT(F, L)*>(tree)->get_root())); \
+        } while(false)
     if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::MSE) {
         GET_ROOT(CART_FLOAT32, MeanSquaredError);
     } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::MSE) {
@@ -174,6 +176,30 @@ static inline void CALL_GET_ROOT_TREE(void* tree, void** ret, __FloatingPoint fp
         throw std::runtime_error("Wrong loss or dtype");
     }
 #undef GET_ROOT
+}
+
+static inline void CALL_RECALIBRATE_TREE(void* tree, void* dataset, __FloatingPoint fp, __Loss loss) {
+#define RECALIBRATE(F, L) static_cast<BRT(F, L)*>(tree)->recalibrate(static_cast<Cart::Dataset<F>*>(dataset))
+    if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::MSE) {
+        RECALIBRATE(CART_FLOAT32, MeanSquaredError);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::MSE) {
+        RECALIBRATE(CART_FLOAT64, MeanSquaredError);
+    } else if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::POISSON_DEVIANCE) {
+        RECALIBRATE(CART_FLOAT32, PoissonDeviance);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::POISSON_DEVIANCE) {
+        RECALIBRATE(CART_FLOAT64, PoissonDeviance);
+    } else if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::NON_CROSSING_LORENZ) {
+        RECALIBRATE(CART_FLOAT32, NonCrossingLorenzCurveError);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::NON_CROSSING_LORENZ) {
+        RECALIBRATE(CART_FLOAT64, NonCrossingLorenzCurveError);
+    } else if(fp == __FloatingPoint::FLOAT32 and loss == __Loss::CROSSING_LORENZ) {
+        RECALIBRATE(CART_FLOAT32, CrossingLorenzCurveError);
+    } else if(fp == __FloatingPoint::FLOAT64 and loss == __Loss::CROSSING_LORENZ) {
+        RECALIBRATE(CART_FLOAT64, CrossingLorenzCurveError);
+    } else {
+        throw std::runtime_error("Wrong loss or dtype");
+    }
+#undef RECALIBRATE
 }
 
 #undef BRT

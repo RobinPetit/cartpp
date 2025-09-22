@@ -30,19 +30,16 @@ LOSS = 'lorenz'
 def show_lorenz_curves(model):
     import matplotlib.pyplot as plt
 
-    lcs = model.get_lorenz_curves()
     fig = plt.figure(figsize=(8, 8))
     ax = fig.add_subplot(111)
     step = 0
-    idx = 0
-    length = 4
-    while idx < lcs.size:
-        xs, ys = lcs[idx:idx+length].reshape(-1, 2).T
+    for gammas, LC_gammas in model.get_lorenz_curves():
         if step % 50 == 0:
-            ax.plot(xs, ys, label=f'After {step} splits (Gini={1-2*area(xs, ys):1.3e})')
+            ax.plot(
+                gammas, LC_gammas,
+                label=f'After {step} splits (Gini={1-2*area(gammas, LC_gammas):1.3e})'
+            )
         step += 1
-        idx += length
-        length += 2
     ax.grid(True)
     plt.legend(loc='upper left')
     plt.savefig(f'lorenz_curves_{LOSS}.png', bbox_inches='tight')
@@ -79,6 +76,8 @@ def test_dt():
     tree = RegressionTree(config)
     tree.fit(dataset_training)
     pred_train = tree.predict(dataset_training.get_X())
+    tree.recalibrate(dataset_training)
+    assert np.allclose(pred_train, tree.predict(dataset_training.get_X()))
     # gamma, LC_training = lorenz_curve_new(
     #     dataset_training.get_y().reshape(-1),
     #     np.array(pred_train).reshape(-1)

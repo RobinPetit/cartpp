@@ -205,6 +205,11 @@ public:
         return _cache_sorted[j];
     }
 
+    inline Dataset<Float>* at(const Array<bool>& mask) const {
+        auto indices{where(mask)};
+        return at(indices);
+    }
+
     inline Dataset<Float>* at(const Array<size_t>& indices) const {
         Array<Float> newX(indices.size() * nb_features());
         for(size_t j{0}; j < nb_features(); ++j) {
@@ -256,6 +261,38 @@ public:
             at(left_indices),
             at(right_indices)
         );
+    }
+
+    inline std::pair<Dataset<Float>*, Dataset<Float>*> split_on(
+            int j, Float threshold) const {
+        assert(not is_categorical(j));
+        auto [Xj, y, p, w, indices] = sorted_Xypw(j);
+        auto it{std::lower_bound(Xj.begin(), Xj.end(), threshold)};
+        assert(it != Xj.end());
+        auto idx{static_cast<size_t>(std::distance(Xj.begin(), it))};
+        return {
+            at(indices.view(0, idx)),
+            at(indices.view(idx, indices.size()))
+        };
+    }
+
+    inline std::pair<Dataset<Float>*, Dataset<Float>*> split_on(
+            int j, uint64_t mask) const {
+        assert(is_categorical(j));
+        const Array<Float>& Xj{get_feature_vector(j)};
+        Array<bool> go_left(size(), false);
+        Array<bool> go_right(size(), false);
+        for(size_t i{0}; i < size(); ++i) {
+            uint64_t flag{1ull << static_cast<int>(Xj[i])};
+            if(mask & flag)
+                go_left[i] = true;
+            else
+                go_right[i] = true;
+        }
+        return {
+            at(go_left),
+            at(go_right)
+        };
     }
 private:
     size_t nb_obs;

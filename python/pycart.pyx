@@ -132,6 +132,10 @@ cdef extern from "_pycart.hpp" nogil:
             void* tree, void** ret,
             __FloatingPoint fp, __Loss loss
     ) except +
+    void CALL_RECALIBRATE_TREE(
+            void* tree, void* dataset,
+            __FloatingPoint fp, __Loss loss
+    ) except +
     cdef size_t CART_DEFAULT
 
     void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
@@ -508,6 +512,14 @@ cdef class RegressionTree:
                 self.config._fp, self.config._loss
             )
 
+    def recalibrate(self, Dataset dataset) -> None:
+        assert dataset.dtype == self.config.dtype
+        with nogil:
+            CALL_RECALIBRATE_TREE(
+                self._tree, dataset.ptr,
+                self.config._fp, self.config._loss
+            )
+
     def predict(self, np.ndarray X) -> np.ndarray:
         if X.ndim == 1:
             X = X.reshape(1, -1)
@@ -599,14 +611,22 @@ cdef class RegressionTree:
                 )
             return np.asarray(_ret64)
 
-    def get_lorenz_curves(self) -> np.ndarray:
+    def get_lorenz_curves(self) -> Iterable:
         cdef int n = self.get_nb_internal_nodes()
-        cdef np.float64_t[:] ret = np.ones((n+1)*(n+4), dtype=np.float64)
+        cdef np.float64_t[:] lcs = np.ones((n+1)*(n+4), dtype=np.float64)
         if self.config._fp == __FloatingPoint.FLOAT32:
-            _extract_lorenz_curves[CART_FLOAT32](self._tree, &ret[0])
+            _extract_lorenz_curves[CART_FLOAT32](self._tree, &lcs[0])
         else:
-            _extract_lorenz_curves[CART_FLOAT64](self._tree, &ret[0])
-        return np.asarray(ret)
+            _extract_lorenz_curves[CART_FLOAT64](self._tree, &lcs[0])
+        cdef int idx = 0
+        cdef int length = 4
+        cdef int end = 0
+        while idx < lcs.size:
+            xs, ys = lcs[idx:idx+length].reshape(-1, 2).T
+            end = np.where(xs >= 1)[0][0]
+            yield (xs[:end+1], ys[:end+1])
+            idx += length
+            length += 2
 
     def get_lorenz_curves_crossings(self) -> np.ndarray:
         cdef int n = self.get_nb_internal_nodes()

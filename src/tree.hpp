@@ -74,14 +74,6 @@ public:
     }
 
     void fit(const Dataset<Float>& dataset) {
-        std::cout << "Weighted: " << dataset.is_weighted() << '\n';
-        if(dataset.is_weighted()) {
-            for(size_t j{0}; j < dataset.nb_features(); ++j)
-                std::cout << "Feature " << j << " is " << (dataset.is_categorical(j) ? "" : "not ")
-                    << "categorical\n";
-            std::cout << "Mean: " << mean(dataset.get_y()) << " and wmean: "
-                << weighted_mean(dataset.get_y(), dataset.get_w()) << '\n';
-        }
         auto start{std::chrono::system_clock::now()};
         if(config.bootstrap) {
             data = dataset.sample(
@@ -156,6 +148,10 @@ public:
             }
             const_cast<Node<Float>*>(node)->data = nullptr;
         }
+    }
+
+    inline void recalibrate(const Dataset<Float>* dataset) {
+        _recalibrate(dataset, root);
     }
 
     Array<Float> predict(const Array<Float>& X) const {
@@ -279,6 +275,37 @@ protected:
                 root = node;
             ++nb_splitting_nodes;
         } while(nb_splitting_nodes < config.interaction_depth);
+    }
+
+    void _recalibrate(const Dataset<Float>* dataset, Node<Float>* node) {
+        if(dataset->size() == 0) {
+            assert(node != root);
+            node->pred = root->pred;
+            node->nb_observations = 0;
+            return;
+        }
+        if(dataset->is_weighted())
+            node->pred = weighted_mean(dataset->get_y(), dataset->get_w());
+        else
+            node->pred = mean<Float, Float>(dataset->get_y());
+        node->nb_observations = dataset->size();
+        if(not node->is_leaf()) {
+            Dataset<Float>* left_data{nullptr};
+            Dataset<Float>* right_data{nullptr};
+            if(dataset->is_categorical(node->feature_idx)) {
+                std::tie(left_data, right_data) = dataset->split_on(
+                    node->feature_idx, node->left_modalities
+                );
+            } else {
+                std::tie(left_data, right_data) = dataset->split_on(
+                    node->feature_idx, node->threshold
+                );
+            }
+            _recalibrate(left_data, node->left_child);
+            _recalibrate(right_data, node->right_child);
+            delete left_data;
+            delete right_data;
+        }
     }
 };
 

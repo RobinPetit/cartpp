@@ -54,8 +54,15 @@ FUNCTION_ARGS = [
     ),
     (
         'GET_ROOT',
-        '*ret = static_cast<void*>(const_cast<Cart::Node<F>*>(static_cast<BRT(F, L)*>(tree)->get_root()))',
+        '''do { \\
+            *ret = static_cast<void*>(const_cast<Cart::Node<F>*>(static_cast<BRT(F, L)*>(tree)->get_root())); \\
+        } while(false)''',
         'void* tree, void** ret'
+    ),
+    (
+        'RECALIBRATE',
+        'static_cast<BRT(F, L)*>(tree)->recalibrate(static_cast<Cart::Dataset<F>*>(dataset))',
+        'void* tree, void* dataset'
     )
 ]
 
