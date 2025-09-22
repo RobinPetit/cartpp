@@ -1,14 +1,12 @@
 #ifndef __PYCART__
 #define __PYCART__
 
-#include "config.hpp"
-#include "dataset.hpp"
-#include "loss.hpp"
-#include "numpy/ndarraytypes.h"
-#include "numpy/npy_common.h"
-#include "tree.hpp"
 #include <concepts>
 #include <type_traits>
+
+#include "dataset.hpp"
+#include "loss.hpp"
+#include "tree.hpp"
 
 enum class __FloatingPoint {
     FLOAT32,
@@ -162,12 +160,17 @@ static inline std::string __Dataset_get_ith_modality_of_j(void* dataset, int i, 
 }
 
 template <std::floating_point Float>
-static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
-    size_t i{0};
+static inline auto __get_lcs(void* _tree) {
     using Loss = Cart::Loss::LorenzCurveError<Float>;
     using RT = Cart::Regression::BaseRegressionTree<Float, Loss>;
     RT* tree{static_cast<RT*>(_tree)};
-    auto lcs{Cart::Loss::_consecutive_lcs(tree->get_internal_nodes())};
+    return Cart::Loss::_consecutive_lcs(tree->get_internal_nodes());
+}
+
+template <std::floating_point Float>
+static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
+    auto lcs{__get_lcs<Float>(_tree)};
+    size_t i{0};
     size_t idx{0};
     size_t n{2};
     for(auto const& lc : lcs) {
@@ -178,6 +181,35 @@ static inline void _extract_lorenz_curves(void* _tree, CART_FLOAT64* out) {
         }
         idx += 2*n;
         ++n;
+    }
+}
+
+template <typename T>
+concept Int32 = requires {
+    requires std::signed_integral<T> and sizeof(T) == 4;
+};
+
+template <std::floating_point Float, Int32 Int32_t>
+static inline void _extract_lorenz_curves_crossings(void* _tree, Int32_t* out) {
+    auto lcs{__get_lcs<Float>(_tree)};
+    size_t i{0};
+    for(auto it{lcs.begin()+1}; it != lcs.end(); ++it) {
+        auto const& current_lc{*it};
+        auto const& previous_lc{*(it-1)};
+        out[++i] = static_cast<Int32_t>(current_lc.count_crossings(previous_lc));
+    }
+}
+
+template <std::floating_point Float, Int32 Int32_t>
+static inline void _extract_duplicate_predictions(void* _tree, Int32_t* out) {
+    auto lcs{__get_lcs<Float>(_tree)};
+    size_t i{0};
+    for(auto it{lcs.begin()+1}; it != lcs.end(); ++it) {
+        auto const& current_lc{*it};
+        auto const& previous_lc{*(it-1)};
+        auto diff{static_cast<Int32_t>(previous_lc.size()+1 - current_lc.size())};
+        out[i] = out[i] + diff;
+        ++i;
     }
 }
 

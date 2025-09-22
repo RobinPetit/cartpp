@@ -5,6 +5,7 @@
 #include <cmath>
 #include <concepts>
 #include <iomanip>
+#include <ios>
 #include <stdexcept>
 
 #include "array.hpp"
@@ -73,10 +74,18 @@ public:
     }
 
     void fit(const Dataset<Float>& dataset) {
+        std::cout << "Weighted: " << dataset.is_weighted() << '\n';
+        if(dataset.is_weighted()) {
+            for(size_t j{0}; j < dataset.nb_features(); ++j)
+                std::cout << "Feature " << j << " is " << (dataset.is_categorical(j) ? "" : "not ")
+                    << "categorical\n";
+            std::cout << "Mean: " << mean(dataset.get_y()) << " and wmean: "
+                << weighted_mean(dataset.get_y(), dataset.get_w()) << '\n';
+        }
         auto start{std::chrono::system_clock::now()};
         if(config.bootstrap) {
             data = dataset.sample(
-                config.bootstrap_frac * dataset.size(),
+                static_cast<size_t>(config.bootstrap_frac * dataset.size()),
                 config.bootstrap_replacement
             );
             owns_dataset = true;
@@ -260,9 +269,9 @@ protected:
                     << "Node (" << node->id << "), Depth: " << node->depth
                     << ", Feature: " << node->feature_idx
                     << ", Threshold: " << node->threshold
-                    << ", DLoss: " << std::setprecision(15) << node->dloss
-                    << ", Loss: " << std::setprecision(15) << node->loss
-                    << ", Mean_value: " << node->pred
+                    << ", DLoss: " << std::scientific << node->dloss
+                    << ", Loss: " << std::scientific << node->loss
+                    << ", Mean_value: " << std::defaultfloat << node->pred
                     << ", N=" << node->nb_observations
                     << '\n';
             }

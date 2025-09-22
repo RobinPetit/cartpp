@@ -25,7 +25,8 @@ static inline Array<size_t> permutation(size_t n) {
 static inline Array<size_t> choice(size_t n, size_t k, bool replace) {
     std::random_device dev;
     std::mt19937 rng(dev());
-    std::uniform_int_distribution<std::mt19937::result_type> gen(0, n-1);
+    using IntType = std::mt19937::result_type;
+    std::uniform_int_distribution<IntType> gen(0u, static_cast<IntType>(n)-1);
     Array<size_t> ret(k);
     if(replace) {
         for(size_t j{0}; j < k; ++j)

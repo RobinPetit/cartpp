@@ -53,11 +53,6 @@ FUNCTION_ARGS = [
         'void* tree, void* array'
     ),
     (
-        'GET_INTERNAL_NODES',
-        '*reinterpret_cast<std::vector<Cart::Node<F>*>**>(ret) = const_cast<std::vector<Cart::Node<F>*>*>(&static_cast<BRT(F, L)*>(tree)->get_internal_nodes())',
-        'void* tree, void** ret'
-    ),
-    (
         'GET_ROOT',
         '*ret = static_cast<void*>(const_cast<Cart::Node<F>*>(static_cast<BRT(F, L)*>(tree)->get_root()))',
         'void* tree, void** ret'

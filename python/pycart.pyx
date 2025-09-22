@@ -128,10 +128,6 @@ cdef extern from "_pycart.hpp" nogil:
             void* tree, void* array,
             __FloatingPoint fp, __Loss loss
     ) except +
-    void CALL_GET_INTERNAL_NODES_TREE(
-            void* tree, void** ret,
-            __FloatingPoint fp, __Loss loss
-    ) except +
     void CALL_GET_ROOT_TREE(
             void* tree, void** ret,
             __FloatingPoint fp, __Loss loss
@@ -139,7 +135,8 @@ cdef extern from "_pycart.hpp" nogil:
     cdef size_t CART_DEFAULT
 
     void _extract_lorenz_curves[T](void* tree, np.float64_t* out)
-
+    void _extract_lorenz_curves_crossings[T](void* tree, np.int32_t* out)
+    void _extract_duplicate_predictions[T](void* tree, np.int32_t* out)
 
 cdef class Dataset:
     cdef void* ptr
@@ -492,18 +489,24 @@ cdef class RegressionTree:
         self.config = config
         with nogil:
             CALL_CREATE_TREE(
-                &self._tree, &self.config._config, self.config._fp, self.config._loss
+                &self._tree, &self.config._config,
+                self.config._fp, self.config._loss
             )
         assert self._tree != NULL
 
     def __dealloc__(self):
         with nogil:
-            CALL_DELETE_TREE(self._tree, self.config._fp, self.config._loss)
+            CALL_DELETE_TREE(
+                self._tree, self.config._fp, self.config._loss
+            )
 
     def fit(self, Dataset dataset):
         assert dataset.dtype == self.config.dtype
         with nogil:
-            CALL_FIT_TREE(self._tree, dataset.ptr, self.config._fp, self.config._loss)
+            CALL_FIT_TREE(
+                self._tree, dataset.ptr,
+                self.config._fp, self.config._loss
+            )
 
     def predict(self, np.ndarray X) -> np.ndarray:
         if X.ndim == 1:
@@ -561,22 +564,20 @@ cdef class RegressionTree:
         cdef Node left_child
         cdef Node right_child
         cdef list ret = list()
-        cdef vector[void*]* _nodes = NULL
-        cdef void** __tmp = NULL
-        CALL_GET_INTERNAL_NODES_TREE(
-            self._tree, __tmp, self.config._fp, self.config._loss
-        )
-        _nodes = <vector[void*]*>(__tmp[0])
-        cdef void* _ptr = NULL
-        for _ptr in _nodes[0]:
-            node = Node.from_pointer(_ptr, self.dtype)
+        cdef list stack = [self.get_root()]
+        while len(stack) > 0:
+            node = stack.pop()
             ret.append(node)
-            left_child = node.left_child
-            right_child = node.right_child
-            if left_child.is_leaf():
-                ret.append(left_child)
-            if right_child.is_leaf():
-                ret.append(right_child)
+            if not node.is_leaf():
+                stack.append(node.right_child)
+                stack.append(node.left_child)
+        return ret
+
+    def get_all_leaves(self) -> Iterable[Node]:
+        return filter(Node.is_leaf, self.get_all_nodes())
+
+    def get_max_depth(self) -> int:
+        return max(node.depth for node in self.get_all_nodes())
 
     def get_feature_importance(self, nb_features) -> np.ndarray:
         cdef np.float32_t[:] _ret32
@@ -599,7 +600,7 @@ cdef class RegressionTree:
             return np.asarray(_ret64)
 
     def get_lorenz_curves(self) -> np.ndarray:
-        n = self.get_nb_internal_nodes()
+        cdef int n = self.get_nb_internal_nodes()
         cdef np.float64_t[:] ret = np.ones((n+1)*(n+4), dtype=np.float64)
         if self.config._fp == __FloatingPoint.FLOAT32:
             _extract_lorenz_curves[CART_FLOAT32](self._tree, &ret[0])
@@ -607,13 +608,28 @@ cdef class RegressionTree:
             _extract_lorenz_curves[CART_FLOAT64](self._tree, &ret[0])
         return np.asarray(ret)
 
+    def get_lorenz_curves_crossings(self) -> np.ndarray:
+        cdef int n = self.get_nb_internal_nodes()
+        cdef np.int32_t[:] out = np.zeros(n+1, dtype=np.int32)
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            _extract_lorenz_curves_crossings[CART_FLOAT32](self._tree, &out[0])
+        else:
+            _extract_lorenz_curves_crossings[CART_FLOAT64](self._tree, &out[0])
+        return np.asarray(out)
+
+    def get_lorenz_curves_duplicates(self) -> np.ndarray:
+        cdef int n = self.get_nb_internal_nodes()
+        cdef np.int32_t[:] out = np.zeros(n+1, dtype=np.int32)
+        if self.config._fp == __FloatingPoint.FLOAT32:
+            _extract_duplicate_predictions[CART_FLOAT32](self._tree, &out[0])
+        else:
+            _extract_duplicate_predictions[CART_FLOAT64](self._tree, &out[0])
+        return np.asarray(out)
+
 def print_dt(tree: RegressionTree, dataset: Dataset):
-    stack = [tree.get_root()]
     cdef double threshold
     cdef int feature
-    while len(stack) > 0:
-        node = stack.pop()
-        assert node is not None
+    for node in tree.get_all_nodes():
         prefix = '    '*node.depth
         node_type = 'Node'
         threshold = node.threshold
@@ -659,9 +675,6 @@ def print_dt(tree: RegressionTree, dataset: Dataset):
                     ', Pred: ', node.pred,
                     sep=''
                 )
-        if not node.is_leaf():
-            stack.append(node.right_child)
-            stack.append(node.left_child)
 
 def Parallel(n_jobs):
     return _Parallel(n_jobs=n_jobs, backend='threading', prefer='threads')
@@ -700,6 +713,9 @@ cdef class RandomForest:
 
     def __len__(self):
         return len(self.trees)
+
+    def __iter__(self):
+        return iter(self.trees)
 
     def fit(self, dataset):
         Parallel(n_jobs=self.n_jobs)(

@@ -473,7 +473,7 @@ private:
         SplitChoice<Float> best_split;
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
-        best_split.dloss = 1e-12;
+        best_split.dloss = static_cast<Float>(1e-12);
         best_split.node = nullptr;
         for(Node<Float>* node : container) {
             if(node->depth == config.max_depth)
@@ -481,7 +481,7 @@ private:
             loss.new_node(node);
             Array<bool> usable(dataset.nb_features(), false);
             for(size_t j{0}; j < usable.size(); ++j)
-                usable[j] = node->data->not_all_equal(j);
+                usable[j] = node->data->not_all_equal(static_cast<int>(j));
             Array<size_t> features{where(usable)};
             if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
                 features = Random::choice(features, config.nb_covariates, false);
@@ -581,7 +581,7 @@ private:
         auto max_mask{1ull << (nb_modalities-1)};
         for(uint64_t _mask{1ull}; _mask < max_mask; ++_mask) {
             auto mask{_mask};
-            std::tuple<size_t, Float, size_t, Float> _split_res;
+            std::tuple<Float, Float, Float, Float> _split_res;
             Float new_loss{loss.evaluate(mask, _split_res)};
             if(std::get<0>(_split_res) < config.minobs or
                std::get<2>(_split_res) < config.minobs)

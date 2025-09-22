@@ -316,7 +316,7 @@ protected:
     // For categorical splits
     virtual Float _evaluate(uint64_t mask) = 0;
     virtual Float _evaluate(uint64_t mask,
-            std::tuple<size_t, Float, size_t, Float>&) = 0;
+            std::tuple<Float, Float, Float, Float>&) = 0;
     virtual void _set_root(Node<Float>* node) = 0;
     virtual void _new_node(const Node<Float>* node) = 0;
     virtual void _new_feature(size_t j) = 0;
@@ -342,7 +342,7 @@ public:
         return self._evaluate(mask);
     }
     inline Float evaluate(
-            uint64_t mask, std::tuple<size_t, Float, size_t, Float>& res) const {
+            uint64_t mask, std::tuple<Float , Float, Float, Float>& res) const {
         return self._evaluate(mask, res);
     }
     inline Float evaluate() {
@@ -394,12 +394,8 @@ public:
         LorenzCurve(const Node<Float>* root):
                 quantiles(),
                 sum_of_weights{root->sum_of_weights},
-                Ey{
-                    (root->data == nullptr)
-                    ? root->pred
-                    : mean<Float, Float>(root->data->get_y())
-                } {
-            quantiles.emplace_back(nullptr, 0, Float(0.));
+                Ey{root->pred} {
+            quantiles.emplace_back(nullptr, Float(0.), Float(0.));
             quantiles.emplace_back(root, sum_of_weights, Ey);
         }
         LorenzCurve(const LorenzCurve& other) = default;
@@ -446,11 +442,13 @@ public:
                 const Node<Float>* node,
                 const Node<Float>* left_node, Float left, Float pred_left,
                 const Node<Float>* right_node, Float right, Float pred_right) {
-            quantiles.emplace_back(nullptr, 0, std::numeric_limits<Float>::infinity());
+            quantiles.emplace_back(
+                nullptr, Float(0.), std::numeric_limits<Float>::infinity()
+            );
             auto it{std::find_if(
-                quantiles.begin()+1,
-                quantiles.end()-1,
-                [node](const auto& entry) {
+                quantiles.begin() + 1,
+                quantiles.end() - 1,
+                [node](const auto& entry) -> bool {
                     return entry.node == node;
                 }
             )};
@@ -479,8 +477,8 @@ public:
             return get_lc().end();
         }
 
-        operator std::vector<Coord<Float>>() const {
-            return std::vector<Coord<Float>>(begin(), end());
+        inline size_t size() const {
+            return get_lc().size();
         }
 
         inline Float area() const {
@@ -492,14 +490,22 @@ public:
                 last_LC = LC_gamma;
                 last_gamma = gamma;
             }
-            return .5 * ret;
+            return static_cast<Float>(.5) * ret;
         }
 
-        inline bool crosses(const LorenzCurve& other, Float eps=1e-8) {
+        inline bool crosses(const LorenzCurve& other, Float eps=1e-8) const {
             for(auto [gamma, LC_gamma] : *this)
                 if(LC_gamma > other(gamma) + eps)
                     return true;
             return false;
+        }
+
+        inline size_t count_crossings(const LorenzCurve& other, Float eps=1e-8) const {
+            size_t ret{0};
+            for(auto [gamma, LC_gamma] : *this)
+                if(LC_gamma > other(gamma) + eps)
+                    ++ret;
+            return ret;
         }
     private:
         std::vector<QuantileFunctionEntry> quantiles;
@@ -518,16 +524,16 @@ public:
             auto& lc{const_cast<std::vector<Coord<Float>>&>(_precomputed_lc)};
             lc.clear();
             lc.reserve(quantiles.size());
-            lc.emplace_back(0, 0);
+            lc.emplace_back(Float(0.), Float(0.));
             Float last_pred{0};
             for(auto it{quantiles.begin()}; it != quantiles.end(); ++it) {
-                if(it->pred == last_pred) {
-                    lc.back().first += it->N;
+                if(it->pred == last_pred) [[unlikely]] {
+                    lc.back().first  += it->N;
                     lc.back().second += it->pred*it->N;
                 } else {
                     last_pred = it->pred;
                     lc.emplace_back(
-                        lc.back().first + it->N,
+                        lc.back().first  + it->N,
                         lc.back().second + it->pred*it->N
                     );
                 }
@@ -560,18 +566,25 @@ protected:
 
     const Node<Float>* current_node{nullptr};
     Float left_sum{0};
+    Float left_sum_of_weights{0};
+    Float right_sum_of_weights{0};
     Float right_sum{0};
     size_t last_idx{0};
     size_t nb_modalities{0};
-    size_t total_size{0};
+    Float total_size{0};
     Float total_sum{0};
 
     LorenzCurve curve;
-    std::vector<std::pair<size_t, Float>> _mod_N_pred;
+    std::vector<std::pair<Float, Float>> _mod_N_pred;
 
     static inline Float _evaluate(const LorenzCurve& curve) {
+        // std::cout << "Evaluating on LC:\n";
+        // for(auto [gamma, LC] : curve)
+        //     std::cout << "(" << gamma << ", " << LC << ")   ";
+        // std::cout << '\n';
         return static_cast<Float>(1) - 2*curve.area();
     }
+
     inline Float _evaluate() const override final {
         return _evaluate(curve);
     }
@@ -591,10 +604,18 @@ protected:
     virtual inline void _new_feature(size_t j) override final {
         auto const& [Xj, y, p, w, indices] = current_node->data->sorted_Xypw(j);
         left_sum = 0;
-        right_sum = sum(y);
+        if(current_node->data->is_weighted()) {
+            right_sum = weighted_sum(y, w);
+            right_sum_of_weights = sum(w);
+        } else {
+            right_sum = sum(y);
+            right_sum_of_weights = static_cast<Float>(y.size());
+        }
+        left_sum_of_weights = 0;
         last_idx = 0;
         total_size = 0;
         total_sum = 0;
+        // std::cout << "new feature " << j << "\n";
         if(current_node->data->is_categorical(j)) {
             auto [values, counts] = unique(Xj);
             auto sumcounts{cumsum<size_t>(counts)};
@@ -603,7 +624,7 @@ protected:
             for(size_t k{0}; k < nb_modalities; ++k) {
                 size_t base_idx{(k == 0) ? 0 : sumcounts[k-1]};
                 size_t idx{sumcounts[k]};
-                if(dataset.is_weighted()) {
+                if(current_node->data->is_weighted()) {
                     auto ws{w.view(base_idx, idx)};
                     _mod_N_pred.emplace_back(
                         sum(ws),
@@ -611,7 +632,7 @@ protected:
                     );
                 } else {
                     _mod_N_pred.emplace_back(
-                        idx - base_idx,
+                        static_cast<Float>(idx - base_idx),
                         sum(y.view(base_idx, idx))
                     );
                 }
@@ -629,15 +650,19 @@ protected:
             const Array<Float>& w,
             size_t idx) const override final {
         LorenzCurve splitted_curve(curve);
-        auto diff{weighted_sum<Float>(y.view(last_idx, idx), w.view(last_idx, idx))};
+        auto ws{w.view(last_idx, idx)};
+        auto diff{weighted_sum<Float>(y.view(last_idx, idx), ws)};
         auto _this{const_cast<LorenzCurveError<Float, allow_crossing>*>(this)};
         _this->last_idx = idx;
-        _this->left_sum += diff;
+        _this->left_sum  += diff;
         _this->right_sum -= diff;
+        auto diff_weights{sum(ws)};
+        _this->left_sum_of_weights  += diff_weights;
+        _this->right_sum_of_weights -= diff_weights;
         splitted_curve.split_node(
             current_node,
-            idx, left_sum / idx,
-            y.size() - idx, right_sum / (y.size() - idx)
+            left_sum_of_weights, left_sum / left_sum_of_weights,
+            right_sum_of_weights, right_sum / right_sum_of_weights
         );
         if constexpr(not allow_crossing) {
             if(splitted_curve.crosses(curve))
@@ -655,10 +680,12 @@ protected:
         _this->last_idx = idx;
         _this->left_sum += diff;
         _this->right_sum -= diff;
+        _this->left_sum_of_weights  = static_cast<Float>(idx);
+        _this->right_sum_of_weights = static_cast<Float>(y.size() - idx);
         splitted_curve.split_node(
             current_node,
-            idx, left_sum / idx,
-            y.size() - idx, right_sum / (y.size() - idx)
+            left_sum_of_weights, left_sum / left_sum_of_weights,
+            right_sum_of_weights, right_sum / right_sum_of_weights
         );
         if constexpr(not allow_crossing) {
             if(splitted_curve.crosses(curve))
@@ -672,21 +699,21 @@ protected:
 
     virtual inline Float _evaluate(
             uint64_t mask,
-            std::tuple<size_t, Float, size_t, Float>& res) override final {
+            std::tuple<Float, Float, Float, Float>& res) override final {
         return _evaluate(mask, &res);
     }
 
     Float _evaluate(
             uint64_t mask,
-            std::tuple<size_t, Float, size_t, Float>* res) {
+            std::tuple<Float, Float, Float, Float>* res) {
         LorenzCurve splitted_curve(curve);
         left_sum = 0;
         right_sum = 0;
-        size_t left_size{0};
-        size_t right_size{0};
+        Float left_size{0};
+        Float right_size{0};
         for(size_t mod_idx{0}; mod_idx < nb_modalities; ++mod_idx) {
             if(mask & (1ull << mod_idx)) {
-                left_sum += _mod_N_pred[mod_idx].second;
+                left_sum  += _mod_N_pred[mod_idx].second;
                 left_size += _mod_N_pred[mod_idx].first;
             }
         }
@@ -715,8 +742,8 @@ using CrossingLorenzCurveError = LorenzCurveError<Float, true>;
 template <std::floating_point Float>
 static inline auto _consecutive_lcs(const std::vector<Node<Float>*>& nodes) {
     typename LorenzCurveError<Float>::LorenzCurve lc(nodes.front());
-    std::vector<std::vector<Coord<Float>>> ret;
-    ret.emplace_back(lc);
+    std::vector<typename Cart::Loss::LorenzCurveError<Float>::LorenzCurve> ret;
+    ret.push_back(lc);
     for(const Node<Float>* node : nodes) {
         lc.split_node(node);
         ret.push_back(lc);
