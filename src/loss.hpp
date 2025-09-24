@@ -379,20 +379,12 @@ protected:
     inline Float compute() const override final {
         if(weighted_sum == 0) [[unlikely]]
             return 0;
-        assert(sum_of_weights > 0);
         Float mu{weighted_sum / sum_of_weights};
         Float ret{sum_wi_when_y[0] * std::log(1 + alpha*mu)};
         for(size_t y{1}; y <= max_y; ++y) {
             Float tmp{std::log((1 + alpha*mu) / (1 + alpha*y))};
             tmp += y*std::log((y*(1 + alpha*mu)) / (mu*(1 + alpha*y)));
             ret += sum_wi_when_y[y] * tmp;
-            assert(std::isfinite(sum_wi_when_y[y]));
-            assert(std::isfinite(tmp));
-        }
-        assert(std::isfinite(ret));
-        if(alpha != 1.) {
-            std::cout << "Alpha: " << alpha << "\n";
-            assert(false);
         }
         return 2 * ret / (sum_of_weights * alpha);
     }
