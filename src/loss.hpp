@@ -382,11 +382,12 @@ protected:
         Float mu{weighted_sum / sum_of_weights};
         Float ret{sum_wi_when_y[0] * std::log(1 + alpha*mu)};
         for(size_t y{1}; y <= max_y; ++y) {
-            Float tmp{std::log((1 + alpha*mu) / (1 + alpha*y))};
-            tmp += y*std::log((y*(1 + alpha*mu)) / (mu*(1 + alpha*y)));
-            ret += sum_wi_when_y[y] * tmp;
+            ret += sum_wi_when_y[y] * (
+                std::log((1 + alpha*mu) / (1 + alpha*y)) / alpha
+                + y*std::log((y*(1 + alpha*mu)) / (mu*(1 + alpha*y)))
+            );
         }
-        return 2 * ret / (sum_of_weights * alpha);
+        return 2 * ret / sum_of_weights;
     }
 };
 
