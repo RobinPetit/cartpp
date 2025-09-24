@@ -239,18 +239,6 @@ protected:
 
     std::vector<Node<Float>*> nodes;
 
-    Float compute_loss(const Array<Float>& y) const {
-        LossType loss;
-        loss.augment(y);
-        return loss();
-    }
-
-    Float compute_loss(const Array<Float>& y, const Array<Float>& w) const {
-        LossType loss;
-        loss.augment(y, w);
-        return loss();
-    }
-
     template <NodeSelector selector, bool normalized_dloss=true>
     void build_tree(const Dataset<Float>& dataset) {
         Splitter<Float, LossType, selector, normalized_dloss> splitter(dataset, config);

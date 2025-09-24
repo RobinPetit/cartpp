@@ -22,6 +22,14 @@ struct TreeConfig {
     bool verbose = false;
     size_t nb_covariates = 0;
     bool normalized_dloss = true;
+
+    /* Loss-specific parameters */
+    union {
+        // Negative Binomial
+        struct {
+            double alpha;
+        } _nb;
+    } _params;
 };
 }
 

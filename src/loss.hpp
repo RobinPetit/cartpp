@@ -10,6 +10,7 @@
 #include <limits>
 
 #include "array.hpp"
+#include "config.hpp"
 #include "node.hpp"
 
 namespace Cart {
@@ -52,6 +53,10 @@ public:
             value{0}, n{0}, precomputed{false},
             sum_of_weights{0}, weighted_sum{0},
             self{static_cast<LossType&>(*this)} {
+    }
+
+    NodeBasedLoss(const TreeConfig&):
+            NodeBasedLoss() {
     }
 
     ~NodeBasedLoss() = default;
@@ -109,13 +114,15 @@ public:
         return sum_of_weights;
     }
 
-    static inline Float get(const Array<Float>& ys) {
-        LossType loss;
+    static inline Float get(const TreeConfig& config, const Array<Float>& ys) {
+        LossType loss(config);
         loss.augment(ys);
         return loss;
     }
-    static inline Float get(const Array<Float>& ys, const Array<Float>& ws) {
-        LossType loss;
+    static inline Float get(
+            const TreeConfig& config,
+            const Array<Float>& ys, const Array<Float>& ws) {
+        LossType loss(config);
         loss.augment(ys, ws);
         return loss;
     }
@@ -135,24 +142,17 @@ protected: \
     using ParentLoss::weighted_sum; \
     using ParentLoss::self; \
 public: \
-    using typename ParentLoss::Float; \
-    static inline Float get(const Array<Float>& ys) { \
-        NAME<Float> loss; \
-        loss.augment(ys); \
-        return loss; \
-    } \
-    static inline Float get(const Array<Float>& ys, const Array<Float>& ws) { \
-        NAME<Float> loss; \
-        loss.augment(ys, ws); \
-        return loss; \
-    }
+    using typename ParentLoss::Float;
 #define END_OF_DEFINITION };
 
 DEFINE_NODE_LOSS(MeanSquaredError)
 public:
     MeanSquaredError():
-        ParentLoss(), unweighted_sum{0},
-        weighted_sum_squares{0} {
+            ParentLoss(), unweighted_sum{0},
+            weighted_sum_squares{0} {
+    }
+    MeanSquaredError(const TreeConfig&):
+            MeanSquaredError() {
     }
     ~MeanSquaredError() = default;
 protected:
@@ -231,6 +231,9 @@ public:
     _NonNegativeIntegerLoss():
             ParentLoss(),
             max_y{0}, sum_wi_when_y(16, 0.), unweighted_sum{0.} {
+    }
+    _NonNegativeIntegerLoss(const TreeConfig&):
+            _NonNegativeIntegerLoss() {
     }
 protected:
     using ParentLoss::sum_of_weights;
@@ -326,7 +329,10 @@ public:
     friend class NodeBasedLoss<Float, PoissonDeviance<Float>>;
     friend ParentLoss;
     PoissonDeviance():
-        ParentLoss() {
+            ParentLoss() {
+    }
+    PoissonDeviance(const TreeConfig&):
+            PoissonDeviance() {
     }
     ~PoissonDeviance() = default;
 protected:
@@ -360,22 +366,35 @@ public:
     friend class NodeBasedLoss<Float, NegativeBinomialDeviance<Float>>;
     friend ParentLoss;
     NegativeBinomialDeviance():
-        ParentLoss() {
+            ParentLoss() {
+    }
+    NegativeBinomialDeviance(const TreeConfig& config):
+            ParentLoss(config),
+            alpha{static_cast<Float>(config._params._nb.alpha)} {
+        assert(alpha > 0);
     }
     ~NegativeBinomialDeviance() = default;
 protected:
+    Float alpha;
     inline Float compute() const override final {
         if(weighted_sum == 0) [[unlikely]]
             return 0;
+        assert(sum_of_weights > 0);
         Float mu{weighted_sum / sum_of_weights};
-        Float ret{0.};
+        Float ret{sum_wi_when_y[0] * std::log(1 + alpha*mu)};
         for(size_t y{1}; y <= max_y; ++y) {
-            // ret += sum_wi_when_y[y]*(std::log((y + 1) / (mu + 1)) - (y-mu) / (1+mu));
-            Float tmp{std::log((1 + mu) / (1 + y))};
-            tmp += y*std::log((y*(1+mu)) / (mu*(1+y)));
+            Float tmp{std::log((1 + alpha*mu) / (1 + alpha*y))};
+            tmp += y*std::log((y*(1 + alpha*mu)) / (mu*(1 + alpha*y)));
             ret += sum_wi_when_y[y] * tmp;
+            assert(std::isfinite(sum_wi_when_y[y]));
+            assert(std::isfinite(tmp));
         }
-        return 2 * ret / sum_of_weights;
+        assert(std::isfinite(ret));
+        if(alpha != 1.) {
+            std::cout << "Alpha: " << alpha << "\n";
+            assert(false);
+        }
+        return 2 * ret / (sum_of_weights * alpha);
     }
 };
 

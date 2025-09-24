@@ -68,6 +68,10 @@ cdef extern from "node.hpp" namespace "Cart" nogil:
         size_t right_modalities
 
 cdef extern from "tree.hpp" namespace "Cart" nogil:
+    cdef struct __anonymous_struct_nb:
+        double alpha
+    cdef union __anonymous_union0:
+        __anonymous_struct_nb _nb
     cdef struct TreeConfig:
         bool bootstrap
         double bootstrap_frac
@@ -80,6 +84,7 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         bool verbose
         size_t nb_covariates
         bool normalized_dloss
+        __anonymous_union0 _params
 
 cdef extern from "_pycart.hpp" nogil:
     void* _make_dataset_no_w[T](T*, T*, bool*, vector[vector[string]], size_t, size_t)
@@ -309,8 +314,9 @@ cdef class Config:
                  bool bootstrap_replacement=True,
                  bool verbose=False,
                  size_t nb_covariates=0,  # 0 if unbounded
-                 bool normalized_dloss=False
-                 ):
+                 bool normalized_dloss=False,
+                 float negative_binomial_alpha=1.
+         ):
         cdef str _loss = loss.lower().strip()
         assert _loss in Config.AVAILABLE_LOSSES, f"Unknown loss '{loss}'"
         if _loss == 'mse':
@@ -324,6 +330,7 @@ cdef class Config:
                 self._loss = __Loss.NON_CROSSING_LORENZ
         elif _loss == 'negative-binomial':
             self._loss = __Loss.NEGATIVE_BINOMIAL_DEVIANCE
+            self._config._params._nb.alpha = negative_binomial_alpha
         else:
             raise ValueError()
         self.dtype = dtype

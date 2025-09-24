@@ -101,8 +101,10 @@ public:
         size_t nb_modalities{counts.size()};
         if(nb_modalities > 64)
             throw std::runtime_error("");
-        std::vector<LossType> losses(nb_modalities);
+        std::vector<LossType> losses;
+        losses.reserve(nb_modalities);
         for(size_t k{0}; k < nb_modalities; ++k) {
+            losses.emplace_back(config);
             size_t base_idx{(k == 0) ? 0 : sumcounts[k-1]};
             size_t idx{sumcounts[k]};
             if constexpr(weighted) {
@@ -120,8 +122,8 @@ public:
         uint64_t best_mask{0};
         auto max_mask{1ull << (nb_modalities-1)};
         for(uint64_t _mask{1ull}; _mask < max_mask; ++_mask) {
-            LossType loss_left;
-            LossType loss_right;
+            LossType loss_left(config);
+            LossType loss_right(config);
             auto mask{_mask};
             for(size_t mod_idx{0}; mod_idx < nb_modalities; ++mod_idx) {
                 if(mask & (1ull << mod_idx))
@@ -192,8 +194,8 @@ public:
             return false;
         Array<bool> left_mask(data->size(), false);
         Array<bool> right_mask(data->size(), true);
-        LossType left_loss;
-        LossType right_loss;
+        LossType left_loss(config);
+        LossType right_loss(config);
         if constexpr(weighted) {
             right_loss.augment(y, w);
         } else {
@@ -303,9 +305,9 @@ public:
         Node<Float>* root{new Node<Float>(node_counter++, 0, &data)};
         root->left_child = root->right_child = nullptr;
         if(data.is_weighted())
-            root->loss = LossType::get(data.get_y(), data.get_w());
+            root->loss = LossType::get(config, data.get_y(), data.get_w());
         else
-            root->loss = LossType::get(data.get_y());
+            root->loss = LossType::get(config, data.get_y());
         expand(root);
         if(container.empty())
             container.emplace(root);
