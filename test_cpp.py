@@ -24,7 +24,8 @@ def area(xs, ys):
     kind='Wutricht',
     max_mod=10
 )
-LOSS = 'lorenz'
+# LOSS = 'poisson'
+LOSS = 'negative-binomial'
 
 
 def show_lorenz_curves(model):
@@ -46,6 +47,22 @@ def show_lorenz_curves(model):
 
 
 def test_rfs():
+    LOSS = 'poisson'  # 'lorenz' #
+    config = Config(
+        loss=LOSS,  # interaction_depth=10,
+        max_depth=5,
+        split_type='best',
+        minobs=100,
+        dtype=DTYPE, crossing_lorenz=True,
+        bootstrap=False, bootstrap_frac=0, normalized_dloss=False,
+        verbose=True
+    )
+
+    model = RandomForest(config, nb_trees=10, n_jobs=10)
+    print("model defined, ready to fit !")
+    model.fit(dataset_train)
+    model.recalibrate(dataset_valid)
+    return
     from time import time
     for nb_cov in range(1, 16):
         config = Config(
@@ -55,7 +72,7 @@ def test_rfs():
             verbose=False,
             nb_covariates=nb_cov,  # nb of covariates per tree in each tree
         )
-        NB_TREES = 1000
+        NB_TREES = 100
         rf = RandomForest(config, NB_TREES, -1)
         beg = time()
         rf.fit(dataset_testing)
@@ -65,9 +82,10 @@ def test_rfs():
 
 
 def test_dt():
+    print(LOSS)
     config = Config(
-        loss=LOSS, interaction_depth=51, split_type='best',
-        minobs=100, dtype=DTYPE, crossing_lorenz=False,
+        loss=LOSS, interaction_depth=10, split_type='best',
+        minobs=10, dtype=DTYPE, crossing_lorenz=False,
         bootstrap=False, bootstrap_frac=.75,
         verbose=True,
         nb_covariates=0,  # nb of covariates per tree in each tree
@@ -87,7 +105,7 @@ def test_dt():
     print('Gini index:', gini_index(pred_train))
     # predictions = tree.predict(dataset_testing.get_X())
     # print_dt(tree, complete_dataset)
-    # show_lorenz_curves(tree)
+    show_lorenz_curves(tree)
     print(tree.get_lorenz_curves_crossings())
     print(tree.get_lorenz_curves_duplicates())
     sorted_predictions = np.asarray(
@@ -96,7 +114,8 @@ def test_dt():
         ]),
         dtype=np.float64
     )
-    print(sorted_predictions[1:] - sorted_predictions[:-1])
+    print(sorted_predictions)
+
 
 def gini_index(y_pred):
     pis, ns = np.unique(y_pred, return_counts=True)
@@ -111,10 +130,14 @@ def gini_index(y_pred):
     num = 0
     den = 0
     for i in range(1, len(seq)):
-        num += (gamma[i] - gamma[i-1]) * sum((gamma[j] - gamma[j-1])*pi[j] for j in range(1, i))
+        num += (gamma[i] - gamma[i-1]) * sum(
+            (gamma[j] - gamma[j-1])*pi[j]
+            for j in range(1, i)
+        )
         num += (gamma[i] - gamma[i-1])**2 / 2 * pi[i]
         den += (gamma[i] - gamma[i-1]) * pi[i]
     return 1 - 2*num / den
+
 
 def lorenz_curve_new(y_true, y_pred):
     alpha = np.arange(y_pred.size + 1, dtype=np.float64)
@@ -123,6 +146,7 @@ def lorenz_curve_new(y_true, y_pred):
     y_lorenz = y_pred.cumsum() / y_pred.sum()
     y_lorenz = np.insert(y_lorenz, 0, 0)
     return alpha, y_lorenz
+
 
 test_dt()
 # test_rfs()

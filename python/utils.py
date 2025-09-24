@@ -4,6 +4,7 @@ from pathlib import Path
 LOSSES = {
     'MSE': 'MeanSquaredError',
     'POISSON_DEVIANCE': 'PoissonDeviance',
+    'NEGATIVE_BINOMIAL_DEVIANCE': 'NegativeBinomialDeviance',
     'NON_CROSSING_LORENZ': 'NonCrossingLorenzCurveError',
     'CROSSING_LORENZ': 'CrossingLorenzCurveError'
 }

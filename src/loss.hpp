@@ -108,6 +108,17 @@ public:
     inline Float weighted_size() const {
         return sum_of_weights;
     }
+
+    static inline Float get(const Array<Float>& ys) {
+        LossType loss;
+        loss.augment(ys);
+        return loss;
+    }
+    static inline Float get(const Array<Float>& ys, const Array<Float>& ws) {
+        LossType loss;
+        loss.augment(ys, ws);
+        return loss;
+    }
 };
 
 #define DEFINE_NODE_LOSS(NAME) \
@@ -208,28 +219,27 @@ protected:
     }
 END_OF_DEFINITION
 
-DEFINE_NODE_LOSS(PoissonDeviance)
+namespace impl {
+// Propagate CRTP
+template <std::floating_point FloatType, class LossType>
+class _NonNegativeIntegerLoss : public NodeBasedLoss<FloatType, LossType> {
+private:
+    typedef NodeBasedLoss<FloatType, LossType> ParentLoss;
+    friend class NodeBasedLoss<FloatType, LossType>;
 public:
-    PoissonDeviance():
-        ParentLoss(), max_y{0}, sum_wi_when_y(16, 0.), unweighted_sum{0.} {
+    using typename ParentLoss::Float;
+    _NonNegativeIntegerLoss():
+            ParentLoss(),
+            max_y{0}, sum_wi_when_y(16, 0.), unweighted_sum{0.} {
     }
-    ~PoissonDeviance() = default;
 protected:
+    using ParentLoss::sum_of_weights;
+    using ParentLoss::weighted_sum;
     size_t max_y;
     std::vector<Float> sum_wi_when_y;
     // \sum_i y_i
     Float unweighted_sum;
 
-    inline Float compute() const override final {
-        if(weighted_sum == 0) [[unlikely]]
-            return 0;
-        Float mu{weighted_sum / sum_of_weights};
-        Float ret{sum_wi_when_y[0]*mu};
-        for(size_t y{1}; y <= max_y; ++y) {
-            ret += sum_wi_when_y[y]*(y*std::log(y / mu) + mu - y);
-        }
-        return 2 * ret / sum_of_weights;
-    }
     inline void _augment(const Array<Float>& ys) override final {
         _update_max_y(ys);
         if(max_y >= sum_wi_when_y.size())
@@ -253,7 +263,7 @@ protected:
             sum_of_weights += ws[i];
         }
     }
-    inline void _augment(const PoissonDeviance<Float>& other_loss) override final {
+    inline void _augment(const LossType& other_loss) override final {
         max_y = std::max(max_y, other_loss.max_y);
         if(max_y >= sum_wi_when_y.size())
             sum_wi_when_y.resize(max_y+1, 0.);
@@ -280,7 +290,7 @@ protected:
             sum_of_weights -= ws[i];
         }
     }
-    inline void _diminish(const PoissonDeviance<Float>& other_loss) override final {
+    inline void _diminish(const LossType& other_loss) override final {
         for(size_t y{0}; y <= other_loss.max_y; ++y)
             sum_wi_when_y[y] -= other_loss.sum_wi_when_y[y];
         unweighted_sum -= other_loss.unweighted_sum;
@@ -294,7 +304,80 @@ protected:
         if(max_y_in_sample > max_y) [[unlikely]]
             max_y = max_y_in_sample;
     }
-END_OF_DEFINITION
+};
+}  // Cart::Loss::impl
+
+template <std::floating_point FloatType>
+class PoissonDeviance final : public impl::_NonNegativeIntegerLoss<
+                                FloatType,
+                                PoissonDeviance<FloatType>
+                        > {
+private:
+    typedef impl::_NonNegativeIntegerLoss<
+        FloatType,
+        PoissonDeviance<FloatType>
+    > ParentLoss;
+    using ParentLoss::weighted_sum;
+    using ParentLoss::sum_of_weights;
+    using ParentLoss::sum_wi_when_y;
+    using ParentLoss::max_y;
+public:
+    using typename ParentLoss::Float;
+    friend class NodeBasedLoss<Float, PoissonDeviance<Float>>;
+    friend ParentLoss;
+    PoissonDeviance():
+        ParentLoss() {
+    }
+    ~PoissonDeviance() = default;
+protected:
+    inline Float compute() const override final {
+        if(weighted_sum == 0) [[unlikely]]
+            return 0;
+        Float mu{weighted_sum / sum_of_weights};
+        Float ret{sum_wi_when_y[0]*mu};
+        for(size_t y{1}; y <= max_y; ++y) {
+            ret += sum_wi_when_y[y]*(y*std::log(y / mu) + mu - y);
+        }
+        return 2 * ret / sum_of_weights;
+    }
+};
+
+template <std::floating_point FloatType>
+class NegativeBinomialDeviance final : public impl::_NonNegativeIntegerLoss<
+                                            FloatType,
+                                            NegativeBinomialDeviance<FloatType>
+                                > {
+private:
+    typedef impl::_NonNegativeIntegerLoss<
+        FloatType, NegativeBinomialDeviance<FloatType>
+    > ParentLoss;
+    using ParentLoss::weighted_sum;
+    using ParentLoss::sum_of_weights;
+    using ParentLoss::sum_wi_when_y;
+    using ParentLoss::max_y;
+public:
+    using typename ParentLoss::Float;
+    friend class NodeBasedLoss<Float, NegativeBinomialDeviance<Float>>;
+    friend ParentLoss;
+    NegativeBinomialDeviance():
+        ParentLoss() {
+    }
+    ~NegativeBinomialDeviance() = default;
+protected:
+    inline Float compute() const override final {
+        if(weighted_sum == 0) [[unlikely]]
+            return 0;
+        Float mu{weighted_sum / sum_of_weights};
+        Float ret{0.};
+        for(size_t y{1}; y <= max_y; ++y) {
+            // ret += sum_wi_when_y[y]*(std::log((y + 1) / (mu + 1)) - (y-mu) / (1+mu));
+            Float tmp{std::log((1 + mu) / (1 + y))};
+            tmp += y*std::log((y*(1+mu)) / (mu*(1+y)));
+            ret += sum_wi_when_y[y] * tmp;
+        }
+        return 2 * ret / sum_of_weights;
+    }
+};
 
 #undef DEFINE_NODE_LOSS
 #undef END_OF_DEFINITION

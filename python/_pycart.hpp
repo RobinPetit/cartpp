@@ -15,6 +15,7 @@ enum class __FloatingPoint {
 enum class __Loss {
     MSE,
     POISSON_DEVIANCE,
+    NEGATIVE_BINOMIAL_DEVIANCE,
     NON_CROSSING_LORENZ,
     CROSSING_LORENZ
 };

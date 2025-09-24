@@ -101,6 +101,7 @@ cdef extern from "_pycart.hpp" nogil:
     cdef enum class __Loss(int):
         MSE,
         POISSON_DEVIANCE,
+        NEGATIVE_BINOMIAL_DEVIANCE,
         NON_CROSSING_LORENZ,
         CROSSING_LORENZ
 
@@ -292,7 +293,7 @@ cdef class Config:
     cdef type dtype
     cdef __FloatingPoint _fp
 
-    AVAILABLE_LOSSES = ['mse', 'poisson', 'lorenz']
+    AVAILABLE_LOSSES = ['mse', 'poisson', 'lorenz', 'negative-binomial']
 
     def __init__(self,
                  str loss,
@@ -321,6 +322,8 @@ cdef class Config:
                 self._loss = __Loss.CROSSING_LORENZ
             else:
                 self._loss = __Loss.NON_CROSSING_LORENZ
+        elif _loss == 'negative-binomial':
+            self._loss = __Loss.NEGATIVE_BINOMIAL_DEVIANCE
         else:
             raise ValueError()
         self.dtype = dtype
