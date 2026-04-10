@@ -1,5 +1,5 @@
 from pycart import RegressionTree, Config, RandomForest
-from tmp import load_data
+from _load_pycart_dataset import load_data
 
 import matplotlib.pyplot as plt
 
@@ -68,6 +68,7 @@ model.fit(dataset_train)
 
 predictions_tree = model.predict(dataset_valid.get_X())
 print(predictions_tree)
+quit()
 
 #
 model_RF = RandomForest(config, nb_trees=10, n_jobs=10)

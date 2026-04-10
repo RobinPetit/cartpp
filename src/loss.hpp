@@ -865,10 +865,10 @@ struct CanBeDepthFirst {
     static constexpr bool value{true};
 };
 
-template <Loss::_TreeBasedLoss LossType>
-struct CanBeDepthFirst<LossType> {
-    static constexpr bool value{false};
-};
+// template <Loss::_TreeBasedLoss LossType>
+// struct CanBeDepthFirst<LossType> {
+//     static constexpr bool value{false};
+// };
 
 template <Loss::_Loss LossType>
 struct CanBeBestFirst {

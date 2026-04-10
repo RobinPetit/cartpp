@@ -397,8 +397,232 @@ private:
     }
 };
 
+
 /* Tree-based loss specialization */
-// NOTE: it makes no sense to build it depth first, hence the specialization
+template <
+    std::floating_point Float,
+    Loss::_TreeBasedLoss<Float> LossType,
+    bool normalized_dloss
+>
+class Splitter<Float, LossType, NodeSelector::DEPTH_FIRST, normalized_dloss> final {
+public:
+    Splitter() = delete;
+    Splitter(const Dataset<Float>& data, const TreeConfig& config_):
+            node_counter{0}, dataset{data}, container(), config{config_},
+            loss(data) {
+        Node<Float>* root{new Node<Float>(node_counter++, 0, &data)};
+        root->left_child = root->right_child = nullptr;
+        loss.set_root(root);
+        container.push_back(root);
+    }
+
+    ~Splitter() {
+        container.clear();
+    }
+
+    Node<Float>* split() {
+        SplitChoice<Float> split{
+            dataset.is_weighted()
+            ? _find_split<true>()
+            : _find_split<false>()
+        };
+        if(not split.valid) [[unlikely]] {
+            // Make sure there is at least the root
+            if(container.size() == 1 and container.back()->is_root()) {
+                auto ret{container.back()};
+                container.pop_back();
+                return ret;
+            } else {
+                return nullptr;
+            }
+        }
+        Node<Float>* node{split.node};
+        node->feature_idx = split.feature_idx;
+        node->threshold = split.threshold;
+        node->loss = static_cast<Float>(-1);
+        node->dloss = split.dloss;
+        node->loss = loss;
+        node->left_modalities = split.left_modalities;
+        node->right_modalities = split.right_modalities;
+        node->left_child = new Node<Float>(
+            node_counter++, node->depth+1, split.left_data, node
+        );
+        node->right_child = new Node<Float>(
+            node_counter++, node->depth+1, split.right_data, node
+        );
+        container.pop_back();
+        container.emplace_back(node->right_child);
+        container.emplace_back(node->left_child);
+        loss.add_expanded_node(node);
+        return node;
+    }
+private:
+    size_t node_counter;
+    const Dataset<Float>& dataset;
+    std::vector<Node<Float>*> container;
+    const TreeConfig& config;
+    LossType loss;
+
+    using Implementation = impl::Splitter<Float, LossType>;
+
+    template <bool weighted>
+    SplitChoice<Float> _find_split() {
+        SplitChoice<Float> best_split;
+        best_split.left_data = best_split.right_data = nullptr;
+        best_split.valid = false;
+        best_split.dloss = static_cast<Float>(1e-12);
+        best_split.node = nullptr;
+        for(Node<Float>* node : container) {
+            if(node->depth == config.max_depth)
+                continue;
+            loss.new_node(node);
+            Array<bool> usable(dataset.nb_features(), false);
+            for(size_t j{0}; j < usable.size(); ++j)
+                usable[j] = node->data->not_all_equal(static_cast<int>(j));
+            Array<size_t> features{where(usable)};
+            if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
+                features = Random::choice(features, config.nb_covariates, false);
+            for(size_t j : features)
+                find_best_split<weighted>(config, node, j, best_split);
+            break;
+        }
+        return best_split;
+    }
+
+    template <bool weighted>
+    void find_best_split(
+            const TreeConfig& config, Node<Float>* node,
+            size_t j, SplitChoice<Float>& best_split) {
+        if(node->data->is_categorical(j)) {
+            find_best_split_categorical<weighted>(config, node, j, best_split);
+        } else {
+            find_best_split_numerical<weighted>(config, node, j, best_split);
+        }
+    }
+    template <bool weighted>
+    void find_best_split_numerical(
+            const TreeConfig& config, Node<Float>* node,
+            size_t j, SplitChoice<Float>& best_split) {
+        const Dataset<Float>* data{node->data};
+        if(data->size() < 2*config.minobs)
+            return;
+        const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
+        loss.new_feature(j);
+        if(Xj[0] == Xj[Xj.size()-1])
+            return;
+        Float best_threshold{std::numeric_limits<Float>::infinity()};
+        Float best_dloss{0};
+        size_t idx{0};
+        size_t best_splitting_idx{0};
+        Float current_loss{loss};
+        while(true) {
+            Float prev_value{Xj[idx]};
+            while(idx < Xj.size() and Xj[idx] == prev_value) {
+                ++idx;
+            }
+            if(idx == Xj.size())
+                break;
+            if(idx < config.minobs)
+                continue;
+            if(data->size() - idx < config.minobs)
+                break;
+            Float new_loss;
+            if constexpr(weighted)
+                new_loss = loss.evaluate(y, w, idx);
+            else
+                new_loss = loss.evaluate(y, idx);
+            Float dloss{new_loss - current_loss};
+            if(dloss > best_dloss) {
+                best_threshold = (Xj[idx] + prev_value) / 2;
+                best_dloss = dloss;
+                best_splitting_idx = idx;
+            }
+        }
+        if(best_dloss > best_split.dloss) {
+            best_split.valid = true;
+            best_split.is_categorical = false;
+            best_split.node = node;
+            best_split.threshold = best_threshold;
+            best_split.feature_idx = static_cast<int>(j);
+            best_split.dloss = best_dloss;
+            if(best_split.left_data != nullptr)
+                delete best_split.left_data;
+            if(best_split.right_data != nullptr)
+                delete best_split.right_data;
+            best_split.left_data = node->data->at(
+                indices.view(0, best_splitting_idx)
+            );
+            best_split.right_data = node->data->at(
+                indices.view(best_splitting_idx, y.size())
+            );
+        }
+    }
+
+    template <bool weighted>
+    void find_best_split_categorical(
+            const TreeConfig& config, Node<Float>* node,
+            size_t j, SplitChoice<Float>& best_split) {
+        auto data{node->data};
+        assert(data != nullptr);
+        const auto& [Xj, y, p, w, indices] = data->sorted_Xypw(j);
+        loss.new_feature(j);
+        if(Xj[0] == Xj[Xj.size()-1])
+            return;
+        auto [values, counts] = unique(Xj);
+        auto sumcounts{cumsum<size_t>(counts)};
+        size_t nb_modalities{counts.size()};
+        if(nb_modalities > 64)
+            throw std::runtime_error("");
+        Float best_dloss{best_split.dloss};
+        uint64_t best_mask{0};
+        Float current_loss{loss};
+        auto max_mask{1ull << (nb_modalities-1)};
+        for(uint64_t _mask{1ull}; _mask < max_mask; ++_mask) {
+            auto mask{_mask};
+            std::tuple<Float, Float, Float, Float> _split_res;
+            Float new_loss{loss.evaluate(mask, _split_res)};
+            if(std::get<0>(_split_res) < config.minobs or
+               std::get<2>(_split_res) < config.minobs)
+                continue;
+            Float dloss{new_loss - current_loss};
+            if(dloss > best_dloss) {
+                best_dloss = dloss;
+                best_mask = _mask;
+            }
+        }
+        if(best_dloss > best_split.dloss) {
+            best_split.valid = true;
+            best_split.is_categorical = true;
+            best_split.node = node;
+            best_split.feature_idx = static_cast<int>(j);
+            best_split.dloss = best_dloss;
+            best_split.left_modalities = 0;
+            best_split.right_modalities = 0;
+            Array<bool> go_left(data->size(), false);
+            Array<bool> go_right(data->size(), false);
+            for(size_t k{0}; k < nb_modalities; ++k) {
+                uint64_t flag{1};
+                size_t base_idx{(k == 0) ? 0 : sumcounts[k-1]};
+                size_t end_idx{sumcounts[k]};
+                flag <<= static_cast<int>(values[k]);
+                if(best_mask & (1ull << k)) {
+                    best_split.left_modalities |= flag;
+                    go_left.view(base_idx, end_idx).assign(true);
+                } else {
+                    best_split.right_modalities |= flag;
+                    go_right.view(base_idx, end_idx).assign(true);
+                }
+            }
+            if(best_split.left_data != nullptr)
+                delete best_split.left_data;
+            if(best_split.right_data != nullptr)
+                delete best_split.right_data;
+            best_split.left_data = data->at(indices[go_left]);
+            best_split.right_data = data->at(indices[go_right]);
+            best_split.threshold = -1;
+        }
+    }
+};
 template <
     std::floating_point Float,
     Loss::_TreeBasedLoss<Float> LossType,

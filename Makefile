@@ -6,7 +6,7 @@ FLAGS=-std=c++20 -Isrc/ $(shell ./get_includes.py) -Wall -Wextra -Wdisabled-opti
 
 CXXFLAGS=-O3 ${FLAGS} -DNDEBUG
 #-Rpass-analysis=loop-vectorize
-# CXXFLAGS=-g -O3 ${FLAGS}
+# CXXFLAGS=-g -pg -O3 ${FLAGS}
 # -fsanitize=address
 # -static-libasan
 
@@ -16,10 +16,10 @@ LINK_FLAGS=-fno-strict-aliasing
 all: bin/default pycart.so
 
 bin/default: obj/main.o
-	${CXX} ${CXXFLAGS} -fsanitize=address $< -o $@
+	${CXX} ${CXXFLAGS} $< -o $@
 
 obj/%.o: %.cpp
-	${CXX} -c ${CXXFLAGS} -fsanitize=address $< -o $@
+	${CXX} -c ${CXXFLAGS} $< -o $@
 
 python/__pycart_calls.hpp: python/utils.py
 	python3 $<
