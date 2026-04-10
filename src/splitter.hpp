@@ -450,9 +450,10 @@ public:
         node->right_child = new Node<Float>(
             node_counter++, node->depth+1, split.right_data, node
         );
-        container.pop_back();
-        container.emplace_back(node->right_child);
-        container.emplace_back(node->left_child);
+        if(node->depth < config.max_depth) {
+            container.emplace_back(node->right_child);
+            container.emplace_back(node->left_child);
+        }
         loss.add_expanded_node(node);
         return node;
     }
@@ -471,21 +472,16 @@ private:
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
         best_split.dloss = static_cast<Float>(1e-12);
-        best_split.node = nullptr;
-        for(Node<Float>* node : container) {
-            if(node->depth == config.max_depth)
-                continue;
-            loss.new_node(node);
-            Array<bool> usable(dataset.nb_features(), false);
-            for(size_t j{0}; j < usable.size(); ++j)
-                usable[j] = node->data->not_all_equal(static_cast<int>(j));
-            Array<size_t> features{where(usable)};
-            if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
-                features = Random::choice(features, config.nb_covariates, false);
-            for(size_t j : features)
-                find_best_split<weighted>(config, node, j, best_split);
-            break;
-        }
+        best_split.node = container.back();
+        loss.new_node(best_split.node);
+        Array<bool> usable(dataset.nb_features(), false);
+        for(size_t j{0}; j < usable.size(); ++j)
+            usable[j] = best_split.node->data->not_all_equal(static_cast<int>(j));
+        Array<size_t> features{where(usable)};
+        if(config.nb_covariates != 0 and features.size() > config.nb_covariates)
+            features = Random::choice(features, config.nb_covariates, false);
+        for(size_t j : features)
+            find_best_split<weighted>(config, best_split.node, j, best_split);
         return best_split;
     }
 
