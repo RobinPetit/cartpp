@@ -413,30 +413,41 @@ public:
         Node<Float>* root{new Node<Float>(node_counter++, 0, &data)};
         root->left_child = root->right_child = nullptr;
         loss.set_root(root);
-        container.push_back(root);
+        container.push(root);
     }
 
     ~Splitter() {
-        container.clear();
+        // container.clear();
+        while(not container.empty()) {
+            Node<Float>* node{container.top()};
+            container.pop();
+            assert(node->is_leaf());
+            assert(node->depth < config.max_depth);
+            (void)node;
+        }
     }
 
     Node<Float>* split() {
+        if(container.empty())
+            return nullptr;
+        Node<Float>* node{container.top()};
         SplitChoice<Float> split{
             dataset.is_weighted()
-            ? _find_split<true>()
-            : _find_split<false>()
+            ? _find_split<true>(node)
+            : _find_split<false>(node)
         };
         if(not split.valid) [[unlikely]] {
             // Make sure there is at least the root
-            if(container.size() == 1 and container.back()->is_root()) {
-                auto ret{container.back()};
-                container.pop_back();
+            if(container.size() == 1 and container.top()->is_root()) {
+                auto ret{container.top()};
+                container.pop();
                 return ret;
             } else {
                 return nullptr;
             }
         }
-        Node<Float>* node{split.node};
+        container.pop();
+        assert(node->is_leaf());
         node->feature_idx = split.feature_idx;
         node->threshold = split.threshold;
         node->loss = static_cast<Float>(-1);
@@ -451,8 +462,8 @@ public:
             node_counter++, node->depth+1, split.right_data, node
         );
         if(node->depth < config.max_depth) {
-            container.emplace_back(node->right_child);
-            container.emplace_back(node->left_child);
+            container.push(node->right_child);
+            container.push(node->left_child);
         }
         loss.add_expanded_node(node);
         return node;
@@ -460,19 +471,20 @@ public:
 private:
     size_t node_counter;
     const Dataset<Float>& dataset;
-    std::vector<Node<Float>*> container;
+    std::stack<Node<Float>*> container;
     const TreeConfig& config;
     LossType loss;
 
     using Implementation = impl::Splitter<Float, LossType>;
 
     template <bool weighted>
-    SplitChoice<Float> _find_split() {
+    SplitChoice<Float> _find_split(Node<Float>* node) {
         SplitChoice<Float> best_split;
         best_split.left_data = best_split.right_data = nullptr;
         best_split.valid = false;
         best_split.dloss = static_cast<Float>(1e-12);
-        best_split.node = container.back();
+        best_split.node = nullptr;
+        best_split.node = node;
         loss.new_node(best_split.node);
         Array<bool> usable(dataset.nb_features(), false);
         for(size_t j{0}; j < usable.size(); ++j)

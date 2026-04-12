@@ -129,6 +129,9 @@ public:
             }
         } else
             throw std::runtime_error("Unknown NodeSelector");
+        if(root == nullptr) {
+            throw std::runtime_error("Fit failed. No root");
+        }
         fitted = true;
         auto end{std::chrono::system_clock::now()};
         std::chrono::duration<double> elapsed{end-start};
