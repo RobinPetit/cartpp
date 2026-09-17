@@ -10,26 +10,41 @@ enum class NodeSelector {
     DEPTH_FIRST
 };
 
-struct TreeConfig {
-    bool bootstrap = false;
-    double bootstrap_frac = 1.;
-    bool bootstrap_replacement = true;
-    bool exact_splits = true;
-    NodeSelector split_type = NodeSelector::BEST_FIRST;
-    size_t max_depth = std::numeric_limits<size_t>::max();
-    size_t interaction_depth = std::numeric_limits<size_t>::max();
-    size_t minobs = 1;
-    bool verbose = false;
-    size_t nb_covariates = 0;
-    bool normalized_dloss = true;
+union AdditionalParams {
+    struct { double alpha; } _nb;
+};
 
-    /* Loss-specific parameters */
-    union {
-        // Negative Binomial
-        struct {
-            double alpha;
-        } _nb;
-    } _params;
+/**
+ * @brief Configuration for the creation of decision trees.
+ */
+struct TreeConfig {
+    /// Use bootstrapping for the training set
+    bool bootstrap = false;
+    /// Proportion of the training set used for bootstrapping
+    double bootstrap_frac = 1.;
+    /// Allow replacement for bootstrapping
+    bool bootstrap_replacement = true;
+    /// TODO: document and clarify the role.
+    bool exact_splits = true;
+    /// How to construct the decision tree
+    NodeSelector split_type = NodeSelector::BEST_FIRST;
+    /// Limit on the depth of the created tree
+    size_t max_depth = std::numeric_limits<size_t>::max();
+    /// Limit on the number of internal nodes in the tree
+    size_t interaction_depth = std::numeric_limits<size_t>::max();
+    /// Minimum size of a subdataset to be splitted
+    size_t minobs = 1;
+    /// Display additional info on stdout
+    bool verbose = false;
+    /// Number of covariates subsampled at each node (0 for no limit)
+    size_t nb_covariates = 0;
+    /// Normalise the Δloss by the size of the dataset
+    bool normalized_dloss = true;
+    /// UNUSED
+    double prop_validation = 0.;
+
+    /// Additional loss-specific parameters
+    AdditionalParams _params;
 };
 }
 

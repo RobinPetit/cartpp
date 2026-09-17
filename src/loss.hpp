@@ -1,3 +1,10 @@
+/**
+ * @file loss.hpp
+ *
+ * @brief Implementation of the different losses.
+ *
+ * Heavily relies on [CRTP](https://en.cppreference.com/w/cpp/language/crtp.html).
+ */
 #ifndef CART_LOSS_HPP
 #define CART_LOSS_HPP
 
@@ -13,34 +20,74 @@
 #include "config.hpp"
 #include "node.hpp"
 
+/**
+ * @namespace Cart
+ *
+ * @brief Namespace containing everything that is defined in cartpp.
+ */
 namespace Cart {
+/**
+ * @namespace Cart::Loss
+ *
+ * In this namespace, one will find all the losses that are implemented.
+ * See @file loss.hpp.
+ */
 namespace Loss {
-
-// A whole bunch of Curiously Recurring Template Pattern for static polymorphism.
-// (c.f. https://en.cppreference.com/w/cpp/language/crtp.html)
-// Also the syntax is wordy but we need to be C++-20 compliant
-// ~(let's hope this compiles on MSVC++ at some point in time...)~
-// IT DOES! Who knew? Way to go Bill
-
+/**
+ * @brief Abstract wrapper for losses to be used during the construction of a
+ * regression/classification tree.
+ *
+ * The idea to avoid having a method
+ * `compute(const Array<Float>& y, const Array<Float>& yhat)`
+ * (or more precisely `compute(const Array<Float>& y, Float yhat)` for CART)
+ * to compute the loss but rather to keep an intermediate state that is updated
+ * when needed, and from which the actual value can be efficiently computed.
+ *
+ * The class must implement some methods (including compute, augment and diminish)
+ * that implement the required behaviour of each loss function and updated state.
+ *
+ * For all loss classes, we use the following notations:
+ * \f{eqnarray*}{
+ * W &=& \sum_{i=1}^nw_i \\
+ * \hat\pi(y, w) &=& \frac{1}{W}\sum_{i=1}^nw_iy_i,
+ * \f}
+ * where \f$n\f$ is the number of observations added to the loss
+ * (see size()).
+ *
+ * @tparam FloatType The (floating-point) type of data.
+ * @tparam Float Alias of FloatType.
+ * @tparam LossType Used for [CRTP](https://en.cppreference.com/w/cpp/language/crtp.html).
+ */
 template <std::floating_point FloatType, class LossType>
 class NodeBasedLoss {
 public:
     typedef FloatType Float;
 protected:
-    // Precomputed loss value
+    /// Precomputed loss value
     Float value;
-    // Number of observations
+    /// Number of observations
     size_t n;
-    // Whether or not `value` is up to date
+    /// Whether or not `value` is up to date
     bool precomputed;
-    // \sum_i w_i
+    /// \f$sum_i w_i\f$, i.e. \f$W\f$
     Float sum_of_weights;
-    // \sum_i w_i y_i
+    /// \f$\sum_i w_i y_i\f$, i.e. \f$W \cdot \pi(y, w)\f$.
     Float weighted_sum;
 
+    /// Reference to `this` of the right type.
+    /// This allows for static polymorphism and speed up runtime.
     LossType& self;
 
+    /**
+     * @brief Evaluate the loss on its current state.
+     *
+     * Use the attributes encoding the current state to compute the value of
+     * the loss function.
+     *
+     * Should only be called by evaluate.
+     */
     virtual inline Float compute() const = 0;
+
     virtual inline void _augment(const Array<Float>& ys) = 0;
     virtual inline void _augment(const Array<Float>& ys, const Array<Float>& ws) = 0;
     virtual inline void _augment(const LossType&) = 0;
@@ -55,76 +102,185 @@ public:
             self{static_cast<LossType&>(*this)} {
     }
 
+    /**
+     * @brief Constructor from TreeConfig.
+     *
+     * Uses information in TreeConfig::_params if needed (in child classes).
+     * Simply an alias of NodeBasedLoss() in the base class.
+     */
     NodeBasedLoss(const TreeConfig&):
             NodeBasedLoss() {
     }
 
-    ~NodeBasedLoss() = default;
+    virtual ~NodeBasedLoss() = default;
 
+    /**
+     * @brief Evaluate the loss on its current state.
+     *
+     * Cache the value so that in two consecutive calls to evaluate()
+     * only the first one will actually compute the value;
+     * the second one will only access the cache.
+     */
     inline Float evaluate() {
-        if(not precomputed) {
+        if(not precomputed) [[likely]] {
             // Use self for static polymorphism
             value = self.compute();
             precomputed = true;
         }
         return value;
     }
+
+    /**
+     * @brief Evaluate the loss.
+     *
+     * Convenient alias of evaluate().
+     */
     inline Float operator()() {
         return evaluate();
     }
+
+    /**
+     * @brief Evaluate the loss.
+     *
+     * Convenient alias of evaluate().
+     */
     inline operator Float() {
         return evaluate();
     }
+
+    /**
+     * @brief Update the current state by adding some values.
+     *
+     * Add the values of `ys` to the considered values for the loss.
+     *
+     * @param ys The ground truth values to add to the current state.
+     */
     inline void augment(const Array<Float>& ys) {
         n += ys.size();
         self._augment(ys);
         precomputed = false;
     }
+
+    /**
+     * @brief Update the current state by adding some values.
+     *
+     * This is a weighted version of augment(const Array<Float>&).
+     *
+     * @param ys The ground truth values to add to the current state.
+     * @param ws The associated weights.
+     */
     inline void augment(const Array<Float>& ys, const Array<Float>& ws) {
         n += ys.size();
         self._augment(ys, ws);
         precomputed = false;
     }
+
+    /**
+     * @brief Update the current state by adding the state of another same loss.
+     *
+     * In some cases (typically for categorical covariates), it might be
+     * interesting to precompute the contribution to the loss function
+     * only once in the beginning, and then combine different "sublosses"
+     * with their precomputed state.
+     *
+     * @param other_loss The other loss to merge with `this`.
+     */
     inline void augment(const LossType& other_loss) {
         n += other_loss.n;
         self._augment(other_loss);
         precomputed = false;
     }
+
+    /**
+     * @brief Update the current state by removing some values.
+     *
+     * This is the opposite operation of augment(const Array<Float>&).
+     */
     inline void diminish(const Array<Float>& ys) {
         n -= ys.size();
         self._diminish(ys);
         precomputed = false;
     }
+
+    /**
+     * @brief Update the current state by removing some values.
+     *
+     * This is the opposite operation of augment(const Array<Float>&, const Array<Float>&).
+     */
     inline void diminish(const Array<Float>& ys, const Array<Float>& ws) {
         n -= ys.size();
         self._diminish(ys, ws);
         precomputed = false;
     }
+
+    /**
+     * @brief Update the current state by removing the state of another loss.
+     *
+     * This is the opposite operation of augment(const LossType&).
+     */
     inline void diminish(const LossType& other_loss) {
         n -= other_loss.n;
         self._diminish(other_loss);
         precomputed = false;
     }
 
+    /**
+     * @brief Get the number of observations seen in this state.
+     */
     inline size_t size() const {
         return n;
     }
 
+    /**
+     * @brief Get the sum of the weights of the observations seen in this state.
+     */
     inline Float weighted_size() const {
         return sum_of_weights;
     }
 
+    /**
+     * @brief Get the loss associated with given values.
+     *
+     * Typically equivalent to
+     * ```
+     * LossType loss(config);
+     * loss.augment(ys);
+     * return loss;
+     * ```
+     *
+     * See NodeBasedLoss(const TreeConfig&) and augment(const Array<Float>&).
+     *
+     * @param config The config containing potential additional params.
+     * @param ys The ground truth values to compute the loss on.
+     */
     static inline Float get(const TreeConfig& config, const Array<Float>& ys) {
         LossType loss(config);
         loss.augment(ys);
         return loss;
     }
+
+    /**
+     * @brief Get the loss associated with given values.
+     *
+     * Weighted version of get(const TreeConfig&, const Array<Float>&).
+     *
+     */
     static inline Float get(
             const TreeConfig& config,
             const Array<Float>& ys, const Array<Float>& ws) {
         LossType loss(config);
         loss.augment(ys, ws);
         return loss;
+
+    }
+
+    /**
+     * @brief Compute the weighted mean of the \f$y_i\f$'s.
+     *
+     * More precisely, compute \f$\hat\pi(y, w)\f$.
+     */
+    inline Float get_mu() const {
+        return weighted_sum / sum_of_weights;
     }
 };
 
@@ -145,35 +301,47 @@ public: \
     using typename ParentLoss::Float;
 #define END_OF_DEFINITION };
 
+/**
+ * @brief Mean squared error.
+ *
+ * The MSE is defined as:
+ * \f{eqnarray*}{
+ * \mathrm{MSE}(y, w)
+ *  &=& \frac{1}{W}\sum_{i=1}^nw_i\left[y_i - \hat\pi(y, w)\right]^2 \\
+ *  &=& \frac{1}{W}\left[\sum_{i=1}^nw_iy_i^2 - 2\hat\pi(y, w)\sum_{i=1}^nw_iy_i\right] + \hat\pi(y, w)^2 \\
+ *  &=& \frac{1}{W}\left[\mathrm{WSS} - 2W\hat\pi(y, w)^2\right] + \hat\pi(y, w)^2 \\
+ *  &=& \frac{1}{W}\mathrm{WSS} - \hat\pi(y, w)^2.
+ * \f}
+ * where \f$W = \sum_{i=1}^nw_i\f$ is the sum of weights
+ * (i.e. the number of samples in the unweighted case),
+ * \f$\hat\pi(y, w) = \frac{1}{W}\sum_{i=1}^nw_iy_i\f$ is the weighted prediction of the \f$y_i\f$'s
+ * (i.e. the average of the \f$y_i\f$'s in the unweighted case) and
+ * \f$\mathrm{WSS} = \sum_{i=1}^nw_iy_i^2\f$ denotes the weighted sum of squares.
+ *
+ * With this formulation, only \f$\hat\pi(y, w)\f$ and \f$\mathrm{WSS}\f$ need to be
+ * maintained at all time for the loss to be evaluated.
+ *
+ * @tparam FloatType See NodeBasedLoss::FloatType.
+ */
 DEFINE_NODE_LOSS(MeanSquaredError)
 public:
     MeanSquaredError():
-            ParentLoss(), unweighted_sum{0},
-            weighted_sum_squares{0} {
+            ParentLoss(), weighted_sum_squares{0} {
     }
     MeanSquaredError(const TreeConfig&):
             MeanSquaredError() {
     }
     ~MeanSquaredError() = default;
 protected:
-    // \sum_i y_i
-    Float unweighted_sum;
-    // \sum_i w_i y_i²
+    /// \\sum_i w_i y_i²  (WSS)
     Float weighted_sum_squares;
 
     inline Float compute() const override final {
-        Float mu{weighted_sum / sum_of_weights};
-        Float ret{
-            weighted_sum_squares
-            - 2 * mu * weighted_sum
-        };
-        ret /= sum_of_weights;
-        ret += mu*mu;
-        return ret;
+        Float mu{this->get_mu()};
+        return weighted_sum_squares / sum_of_weights - mu*mu;
     }
     inline void _augment(const Array<Float>& ys) override final {
         for(size_t i{0}; i < ys.size(); ++i) {
-            unweighted_sum += ys[i];
             weighted_sum += ys[i];
             weighted_sum_squares += ys[i]*ys[i];
         }
@@ -182,21 +350,18 @@ protected:
     inline void _augment(const Array<Float>& ys,
                          const Array<Float>& ws) override final {
         for(size_t i{0}; i < ys.size(); ++i) {
-            unweighted_sum += ys[i];
             weighted_sum += ys[i]*ws[i];
             weighted_sum_squares += ys[i]*ys[i]*ws[i];
             sum_of_weights += ws[i];
         }
     }
     inline void _augment(const MeanSquaredError<Float>& other_loss) override final {
-        unweighted_sum += other_loss.unweighted_sum;
         weighted_sum += other_loss.weighted_sum;
         weighted_sum_squares += other_loss.weighted_sum_squares;
         sum_of_weights += other_loss.sum_of_weights;
     }
     inline void _diminish(const Array<Float>& ys) override final {
         for(size_t i{0}; i < ys.size(); ++i) {
-            unweighted_sum -= ys[i];
             weighted_sum -= ys[i];
             weighted_sum_squares -= ys[i]*ys[i];
         }
@@ -205,42 +370,62 @@ protected:
     inline void _diminish(const Array<Float>& ys,
                           const Array<Float>& ws) override final {
         for(size_t i{0}; i < ys.size(); ++i) {
-            unweighted_sum -= ys[i];
             weighted_sum -= ys[i]*ws[i];
             weighted_sum_squares -= ys[i]*ys[i]*ws[i];
             sum_of_weights -= ws[i];
         }
     }
     inline void _diminish(const MeanSquaredError<Float>& other_loss) override final {
-        unweighted_sum -= other_loss.unweighted_sum;
         weighted_sum -= other_loss.weighted_sum;
         weighted_sum_squares -= other_loss.weighted_sum_squares;
         sum_of_weights -= other_loss.sum_of_weights;
     }
 END_OF_DEFINITION
 
+/**
+ * @namespace Cart::Loss::impl
+ *
+ * Local namespace for implementation details that do not need to be used
+ * by a user of the library.
+ */
 namespace impl {
-// Propagate CRTP
+/**
+ * @class Cart::Loss::impl::NonNegativeIntegerLoss
+ * @brief Generic abstract class for loss when \f$y \in [0, N] \cap \mathbb{Z}\f$.
+ *
+ * Keeps the sums
+ * (i) \f$\displaystyle\sum_{i \in \mathcal{I}_y}w_i\f$ for each integer value of \f$y\f$,
+ * (ii) \f$\displaystyle\sum_{i=1}^nw_i\f$,
+ * (iii) \f$\displaystyle\sum_{i=1}^ny_i\f$ and
+ * (iv) \f$\displaystyle\sum_{i=1}^nw_iy_i\f$.
+ *
+ * Here, \f$\mathcal{I}_y\f$ is the set of indices \f$i \in [1, n] \cap \mathbb{Z}\f$
+ * such that \f$y_i = y\f$.
+ *
+ * Only compute() remains to be implemented for concrete classes.
+ * See PoissonDeviance and NegativeBinomialDeviance.
+ */
 template <std::floating_point FloatType, class LossType>
-class _NonNegativeIntegerLoss : public NodeBasedLoss<FloatType, LossType> {
+class NonNegativeIntegerLoss : public NodeBasedLoss<FloatType, LossType> {
 private:
     typedef NodeBasedLoss<FloatType, LossType> ParentLoss;
-    friend class NodeBasedLoss<FloatType, LossType>;
 public:
     using typename ParentLoss::Float;
-    _NonNegativeIntegerLoss():
+    NonNegativeIntegerLoss():
             ParentLoss(),
             max_y{0}, sum_wi_when_y(16, 0.), unweighted_sum{0.} {
     }
-    _NonNegativeIntegerLoss(const TreeConfig&):
-            _NonNegativeIntegerLoss() {
+    NonNegativeIntegerLoss(const TreeConfig&):
+            NonNegativeIntegerLoss() {
     }
+
+    virtual ~NonNegativeIntegerLoss() = default;
 protected:
     using ParentLoss::sum_of_weights;
     using ParentLoss::weighted_sum;
     size_t max_y;
     std::vector<Float> sum_wi_when_y;
-    // \sum_i y_i
+    // \\sum_i y_i
     Float unweighted_sum;
 
     inline void _augment(const Array<Float>& ys) override final {
@@ -310,13 +495,28 @@ protected:
 };
 }  // Cart::Loss::impl
 
+/**
+ * @brief Poisson deviance.
+ *
+ * The Poisson deviance is defined as (where \f$K\f$ is the maximum value of the \f$y_i\f$'s):
+ * \f{eqnarray*}{
+ * d_{\mathcal{P}}(y, w)
+ * &=& \frac{2}{W}\left[\sum_{i=1}^nw_i\left(y_i\log\frac{y_i}{\hat\pi(y, w)} + \hat\pi(y, w) - y_i\right)\right] \\
+ * &=& \frac{2}{W}\sum_{i=1}^nw_iy_i\log\frac{y_i}{\hat\pi(y, w)} \\
+ * &=& \frac{2}{W}\sum_{k=1}^K\sum_{i \in \mathcal{I}_k}w_ik\log\frac{k}{\hat\pi(y, w)} \\
+ * &=& \frac{2}{W}\sum_{k=1}^K\left[\left(\sum_{i \in \mathcal{I}_k}w_i\right) \cdot k\log\frac{k}{\hat\pi(y, w)}\right]
+ * \f}
+ *
+ * It is therefore sufficient to maintain \f$W\f$ and \f$\displaystyle\sum_{i \in \mathcal{I}_k}w_i\f$
+ * (for every \f$0 \le k \le K\f$) to compute the deviance.
+ */
 template <std::floating_point FloatType>
-class PoissonDeviance final : public impl::_NonNegativeIntegerLoss<
+class PoissonDeviance final : public impl::NonNegativeIntegerLoss<
                                 FloatType,
                                 PoissonDeviance<FloatType>
                         > {
 private:
-    typedef impl::_NonNegativeIntegerLoss<
+    typedef impl::NonNegativeIntegerLoss<
         FloatType,
         PoissonDeviance<FloatType>
     > ParentLoss;
@@ -339,22 +539,32 @@ protected:
     inline Float compute() const override final {
         if(weighted_sum == 0) [[unlikely]]
             return 0;
-        Float mu{weighted_sum / sum_of_weights};
-        Float ret{sum_wi_when_y[0]*mu};
-        for(size_t y{1}; y <= max_y; ++y) {
-            ret += sum_wi_when_y[y]*(y*std::log(y / mu) + mu - y);
-        }
+        Float mu{this->get_mu()};
+        Float ret{0};
+        for(size_t y{1}; y <= max_y; ++y)
+            ret += sum_wi_when_y[y] * y * std::log(y / mu);
         return 2 * ret / sum_of_weights;
     }
 };
 
+/**
+ * @brief Negative binomial (of parameter \f$\alpha\f$) deviance.
+ *
+ * The deviance is defined as:
+ * \f{eqnarray*}{
+ * d(y, w)
+ * &=& \frac{1}{W}\sum_{i=1}^nw_i\left(\frac{1}{\alpha}\log\frac{1+\alpha\hat\pi(y, w)}{1+\alpha y} + y\log\frac{y(1+\alpha\hat\pi(y, w))}{\hat\pi(y, w)(1 + \alpha y)}\right) \\
+ * &=& \frac{1}{W}\left(\sum_{i \in \mathcal{I}_0}w_i\right)\log(1+\alpha\hat\pi(y, w))
+ *     + \frac{1}{W}\sum_{k=1}^K\left[\left(\sum_{i \in \mathcal{I}_k}w_i\right)\left(\frac{1}{\alpha}\log\frac{1+\alpha\hat\pi(y, w)}{1+\alpha k} + k\log\frac{k(1+\alpha\hat\pi(y, w))}{\hat\pi(y, w)(1+\alpha k)}\right)\right].
+ * \f}
+ */
 template <std::floating_point FloatType>
-class NegativeBinomialDeviance final : public impl::_NonNegativeIntegerLoss<
+class NegativeBinomialDeviance final : public impl::NonNegativeIntegerLoss<
                                             FloatType,
                                             NegativeBinomialDeviance<FloatType>
                                 > {
 private:
-    typedef impl::_NonNegativeIntegerLoss<
+    typedef impl::NonNegativeIntegerLoss<
         FloatType, NegativeBinomialDeviance<FloatType>
     > ParentLoss;
     using ParentLoss::weighted_sum;
@@ -379,7 +589,7 @@ protected:
     inline Float compute() const override final {
         if(weighted_sum == 0) [[unlikely]]
             return 0;
-        Float mu{weighted_sum / sum_of_weights};
+        Float mu{this->get_mu()};
         Float ret{sum_wi_when_y[0] * std::log(1 + alpha*mu)};
         for(size_t y{1}; y <= max_y; ++y) {
             ret += sum_wi_when_y[y] * (
@@ -673,10 +883,6 @@ protected:
     std::vector<std::pair<Float, Float>> _mod_N_pred;
 
     static inline Float _evaluate(const LorenzCurve& curve) {
-        // std::cout << "Evaluating on LC:\n";
-        // for(auto [gamma, LC] : curve)
-        //     std::cout << "(" << gamma << ", " << LC << ")   ";
-        // std::cout << '\n';
         return static_cast<Float>(1) - 2*curve.area();
     }
 
@@ -710,7 +916,6 @@ protected:
         last_idx = 0;
         total_size = 0;
         total_sum = 0;
-        // std::cout << "new feature " << j << "\n";
         if(current_node->data->is_categorical(j)) {
             auto [values, counts] = unique(Xj);
             auto sumcounts{cumsum<size_t>(counts)};
@@ -833,18 +1038,6 @@ template <std::floating_point Float>
 using NonCrossingLorenzCurveError = LorenzCurveError<Float, false>;
 template <std::floating_point Float>
 using CrossingLorenzCurveError = LorenzCurveError<Float, true>;
-
-template <std::floating_point Float>
-static inline auto _consecutive_lcs(const std::vector<Node<Float>*>& nodes) {
-    typename LorenzCurveError<Float>::LorenzCurve lc(nodes.front());
-    std::vector<typename Cart::Loss::LorenzCurveError<Float>::LorenzCurve> ret;
-    ret.push_back(lc);
-    for(const Node<Float>* node : nodes) {
-        lc.split_node(node);
-        ret.push_back(lc);
-    }
-    return ret;
-}
 
 template <typename LossType, typename Float=typename LossType::Float>
 concept _NodeBasedLoss = requires {

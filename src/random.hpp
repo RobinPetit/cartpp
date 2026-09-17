@@ -33,7 +33,8 @@ static inline Array<size_t> choice(size_t n, size_t k, bool replace) {
             ret[j] = gen(rng);
     } else {
         if(n < k) [[unlikely]]
-            throw std::runtime_error("Unable to choose " + std::to_string(k) + " from " + std::to_string(n));
+            throw std::runtime_error("Unable to choose " + std::to_string(k)
+                    + " from " + std::to_string(n));
         Array<size_t> tmp = permutation(n);
         ret.assign(tmp.view(0, k));
     }

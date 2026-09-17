@@ -28,11 +28,6 @@ concept SortKey = requires(
     {m(ptr, i, j)} -> std::same_as<bool>;
 };
 
-enum class SortingAlgorithm : int {
-    MERGESORT,
-    QUICKSORT_3WAY
-};
-
 template <typename T>
 static inline char* AS_CHARPTR(T* ptr) {
     return static_cast<char*>(static_cast<void*>((ptr)));

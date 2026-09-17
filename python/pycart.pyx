@@ -84,6 +84,7 @@ cdef extern from "tree.hpp" namespace "Cart" nogil:
         bool verbose
         size_t nb_covariates
         bool normalized_dloss
+        double prop_validation
         __anonymous_union0 _params
 
 cdef extern from "_pycart.hpp" nogil:
@@ -315,7 +316,8 @@ cdef class Config:
                  bool verbose=False,
                  size_t nb_covariates=0,  # 0 if unbounded
                  bool normalized_dloss=False,
-                 float negative_binomial_alpha=1.
+                 float negative_binomial_alpha=1.,
+                 float prop_validation=0.
          ):
         cdef str _loss = loss.lower().strip()
         assert _loss in Config.AVAILABLE_LOSSES, f"Unknown loss '{loss}'"
@@ -357,6 +359,7 @@ cdef class Config:
         self._config.verbose = verbose
         self._config.nb_covariates = nb_covariates
         self._config.normalized_dloss = normalized_dloss
+        self._config.prop_validation = prop_validation
 
 cdef class Node:
     cdef void* ptr

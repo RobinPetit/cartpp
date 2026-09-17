@@ -15,6 +15,11 @@
 
 namespace Cart {
 namespace Regression {
+/**
+ * @brief Regression tree.
+ *
+ * TODO
+ */
 template <
     std::floating_point Float,
     typename LossType
@@ -73,6 +78,7 @@ public:
     }
 
     void fit(const Dataset<Float>& dataset) {
+        // TODO: handle fairness epsilon
         auto start{std::chrono::system_clock::now()};
         if(config.bootstrap) {
             data = dataset.sample(
@@ -87,12 +93,11 @@ public:
         is_categorical = Array<bool>(data->nb_features());
         for(size_t j{0}; j < is_categorical.size(); ++j)
             is_categorical[j] = data->is_categorical(j);
-        // TODO: bootstraping
         if(data->is_weighted())
             prop_root_p0 = weighted_prop_false(data->get_p(), data->get_w());
         else
             prop_root_p0 = mean<bool, Float>(data->get_p());
-        // TODO: handle fairness epsilon
+        // TODO: unclear what happens if config.exact_splits is set to false
         if(config.exact_splits) {
             for(size_t j{0}; j < data->nb_features(); ++j) {
                 if(not is_categorical[j])
@@ -299,12 +304,12 @@ protected:
     }
 };
 
-template <typename Float, typename LossType>
-requires(
-    std::derived_from<LossType, Loss::NodeBasedLoss<Float, LossType>>
-)
-class NodeBasedRegressionTree final : public BaseRegressionTree<Float, LossType> {
-};
+// template <typename Float, typename LossType>
+// requires(
+//     std::derived_from<LossType, Loss::NodeBasedLoss<Float, LossType>>
+// )
+// class NodeBasedRegressionTree final : public BaseRegressionTree<Float, LossType> {
+// };
 
 }  // Cart::Regression::
 }  // Cart::

@@ -1,3 +1,4 @@
+*.bak
 *.txt
 *.json
 *.d
@@ -17,7 +18,10 @@ __pycache__/
 *.cartbin
 *.out
 
+RESULTS/
+
 .clang-uml
 diagrams/
+doc/
 
 *.png

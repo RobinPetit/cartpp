@@ -1,37 +1,33 @@
 # Cart++
 
-`Cart++` is a C++ implementation of CART that contains:
-- [ ] Fairness criteria
-- [x] Node-based losses
-- [x] Tree-based losses
-
 The library is header-only (and heavily relies on C++20 templates and concepts),
 so just include the appropriate files when compiling.
 
-## Python binding
+## Features
+
+In `cartpp`, one will find an implementation of CART for regression and classification trees.
+The existing loss functions so far are:
+- MSE
+- Poisson deviance
+- Negative binomial deviance
+
+In addition to _classical_ CART, `cartpp` proposes an implementation of _Gini-trees_ (TODO: add link to paper).
+That is, in addition to a construction of trees where the loss at each leaf is independent of the loss at every other leaf;
+`cartpp` proposes a loss at each leaf that depends on the whole tree (the distribution of predictions).
+That loss is the _Gini index_ of the tree.
+
+## Bindings
+
+### Python binding
 
 The module `pycart` is a Python binding using `Cart++`.
 The binding is written using `Cython`.
 
-## R binding
+### R binding
 
-Will come at some point
+Will come at some point (maybe?)
 
-## Debug build and sanitizers
 
-By default, this project assumes compiling with `clang` but supports `gcc` as well.
-To build `pycart` with sanitizers, add `-fsanitize=address` at compile-time.
-To be able to then use the module, prefix the `python3 <file.py>` with:
-```
-LD_PRELOAD="$(clang -print-file-name=libasan.so) $(clang -print-file-name=libasan.so)"
-```
+## TODO
 
-To have ASAN's logs in some log file, use option `ASAN_OPTIONS="log_path=<path>"`
-
-For instance:
-```
-make pycart.so
-LD_PRELOAD="$(clang -print-file-name=libasan.so) $(clang -print-file-name=libasan.so)" ASAN_OPTIONS="log_path=asan_log.txt" python3 test_cpp.py
-file asan_log.txt
-```
-
+See [`TODO.md`](https://github.com/RobinPetit/cartpp/blob/main/TODO.md)
