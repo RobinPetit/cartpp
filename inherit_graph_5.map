@@ -1,0 +1,13 @@
+<map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
+<area shape="rect" id="Node000000" href="$classCart_1_1Loss_1_1NodeBasedLoss.html" title="Abstract wrapper for losses to be used during the construction of a regression/classification tree." alt="" coords="5,91,203,131"/>
+<area shape="rect" id="Node000001" href="$classCart_1_1Loss_1_1impl_1_1NonNegativeIntegerLoss.html" title=" " alt="" coords="273,5,523,60"/>
+<area shape="poly" id="edge1_Node000000_Node000001" title=" " alt="" coords="192,85,294,58,296,63,193,90"/>
+<area shape="rect" id="Node000003" href="$classCart_1_1Loss_1_1impl_1_1NonNegativeIntegerLoss.html" title=" " alt="" coords="251,84,545,139"/>
+<area shape="poly" id="edge3_Node000000_Node000003" title=" " alt="" coords="216,109,251,109,251,114,216,114"/>
+<area shape="rect" id="Node000005" href="$classCart_1_1Loss_1_1impl_1_1NonNegativeIntegerLoss.html" title="Generic abstract class for loss when ." alt="" coords="269,163,527,203"/>
+<area shape="poly" id="edge5_Node000000_Node000005" title=" " alt="" coords="189,132,251,149,302,161,301,166,250,154,188,138"/>
+<area shape="rect" id="Node000002" href="$classCart_1_1Loss_1_1NegativeBinomialDeviance.html" title="Negative binomial (of parameter ) deviance." alt="" coords="593,13,804,53"/>
+<area shape="poly" id="edge2_Node000001_Node000002" title=" " alt="" coords="536,30,593,30,593,35,536,35"/>
+<area shape="rect" id="Node000004" href="$classCart_1_1Loss_1_1PoissonDeviance.html" title="Poisson deviance." alt="" coords="596,91,801,131"/>
+<area shape="poly" id="edge4_Node000003_Node000004" title=" " alt="" coords="559,109,596,109,596,114,559,114"/>
+</map>
