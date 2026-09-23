@@ -6,7 +6,8 @@ LOSSES = {
     'POISSON_DEVIANCE': 'PoissonDeviance',
     'NEGATIVE_BINOMIAL_DEVIANCE': 'NegativeBinomialDeviance',
     'NON_CROSSING_LORENZ': 'NonCrossingLorenzCurveError',
-    'CROSSING_LORENZ': 'CrossingLorenzCurveError'
+    'CROSSING_LORENZ': 'CrossingLorenzCurveError',
+    'GINI_ABL': 'GiniIndexABL'
 }
 DTYPES = {
     'FLOAT32': 'CART_FLOAT32',
@@ -99,6 +100,7 @@ def make_function(def_name, def_value, args='void* tree'):
     function.append(f'#undef {def_name}')
     function.append('}')
     return function
+
 
 def make_cpp_wrapper():
     dirname = os.path.dirname(os.path.abspath(__file__))

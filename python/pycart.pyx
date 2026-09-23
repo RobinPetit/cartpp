@@ -109,7 +109,8 @@ cdef extern from "_pycart.hpp" nogil:
         POISSON_DEVIANCE,
         NEGATIVE_BINOMIAL_DEVIANCE,
         NON_CROSSING_LORENZ,
-        CROSSING_LORENZ
+        CROSSING_LORENZ,
+        GINI_ABL
 
     void CALL_FIT_TREE(
             void* tree, void* dataset,
@@ -299,7 +300,12 @@ cdef class Config:
     cdef type dtype
     cdef __FloatingPoint _fp
 
-    AVAILABLE_LOSSES = ['mse', 'poisson', 'lorenz', 'negative-binomial']
+    AVAILABLE_LOSSES = [
+        'mse', 'poisson',
+        'negative-binomial',
+        # The following should be equivalent
+        'lorenz', 'gini-index'
+    ]
 
     def __init__(self,
                  str loss,
@@ -333,6 +339,8 @@ cdef class Config:
         elif _loss == 'negative-binomial':
             self._loss = __Loss.NEGATIVE_BINOMIAL_DEVIANCE
             self._config._params._nb.alpha = negative_binomial_alpha
+        elif _loss == 'gini-index':
+            self._loss = __Loss.GINI_ABL
         else:
             raise ValueError()
         self.dtype = dtype

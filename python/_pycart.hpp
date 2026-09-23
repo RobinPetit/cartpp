@@ -17,7 +17,8 @@ enum class __Loss {
     POISSON_DEVIANCE,
     NEGATIVE_BINOMIAL_DEVIANCE,
     NON_CROSSING_LORENZ,
-    CROSSING_LORENZ
+    CROSSING_LORENZ,
+    GINI_ABL
 };
 
 template <std::floating_point Float>
@@ -162,7 +163,7 @@ static inline std::string __Dataset_get_ith_modality_of_j(void* dataset, int i, 
 
 template <std::floating_point Float>
 static inline auto __get_lcs(void* _tree) {
-    using Loss = Cart::Loss::LorenzCurveError<Float>;
+    using Loss = Cart::Loss::GiniIndexLorenzCurve<Float>;
     using RT = Cart::Regression::BaseRegressionTree<Float, Loss>;
     RT* tree{static_cast<RT*>(_tree)};
     return Cart::Loss::_consecutive_lcs(tree->get_internal_nodes());

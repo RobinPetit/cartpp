@@ -601,18 +601,35 @@ protected:
     }
 };
 
-#undef DEFINE_NODE_LOSS
-#undef END_OF_DEFINITION
+template <std::floating_point Float>
+struct SplitPred {
+    Float left_size;
+    Float left_pred;
+    Float right_size;
+    Float right_pred;
+};
 
 template <std::floating_point FloatType, class LossType>
 class TreeBasedLoss {
 public:
     typedef FloatType Float;
+
 protected:
     LossType& self;
 
+    const Dataset<Float>& dataset;
+    const Node<Float>* current_node{nullptr};
+    size_t last_idx{0};
+    std::vector<std::pair<Float, Float>> precomputed_modalities;
+    Float total_size{0};
+    Float total_sum{0};
+    Float left_sum{0};
+    Float left_sum_of_weights{0};
+    Float right_sum{0};
+    Float right_sum_of_weights{0};
+
     virtual void _add_expanded_node(const Node<Float>* node) = 0;
-    virtual Float  _evaluate() const = 0;  // TODO: remove?
+     virtual Float  _evaluate() const = 0;
     // For numerical splits
     virtual Float  _evaluate(
             const Array<Float>& y, size_t idx) const = 0;
@@ -620,34 +637,94 @@ protected:
             const Array<Float>& y, const Array<Float>& w, size_t idx) const = 0;
     // For categorical splits
     virtual Float _evaluate(uint64_t mask) = 0;
-    virtual Float _evaluate(uint64_t mask,
-            std::tuple<Float, Float, Float, Float>&) = 0;
+    virtual Float _evaluate(uint64_t mask, SplitPred<Float>&) = 0;
     virtual void _set_root(Node<Float>* node) = 0;
-    virtual void _new_node(const Node<Float>* node) = 0;
-    virtual void _new_feature(size_t j) = 0;
+
+    virtual void _new_node() { }
+    virtual void _new_feature() { }
 public:
-    TreeBasedLoss():
-            self{static_cast<LossType&>(*this)} {}
+    TreeBasedLoss() = delete;
+
+    TreeBasedLoss(const Dataset<Float>& data):
+            self{static_cast<LossType&>(*this)}, dataset{data} {
+    }
+
     ~TreeBasedLoss() = default;
 
+    /**
+     * @brief Notify the loss that a new node is being looked at for the
+     * current split.
+     *
+     * @param node The node that is considered.
+     */
     inline void new_node(const Node<Float>* node) {
-        self._new_node(node);
-    }
-    inline void new_feature(size_t j) {
-        self._new_feature(j);
+        current_node = node;
+        self._new_node();
     }
 
+    /**
+     * @brief Notify the loss that a new covariate is being looked at for
+     * the current split on the current node.
+     *
+     * @param j The index of the new covariate.
+     */
+    inline void new_feature(size_t j) {
+        auto const& [Xj, y, p, w, indices] = current_node->data->sorted_Xypw(j);
+        precomputed_modalities.clear();
+        if(current_node->data->is_categorical(j)) {
+            total_size = total_sum = 0;
+            auto [values, counts] = unique(Xj);
+            size_t nb_modalities = counts.size();
+            auto sumcounts{cumsum<size_t>(counts)};
+            size_t base_idx, idx = 0;
+            for(size_t k{0}; k < nb_modalities; ++k) {
+                base_idx = idx;
+                idx = sumcounts[k];
+                auto ys{y.view(base_idx, idx)};
+                if(current_node->data->is_weighted()) {
+                    auto ws{w.view(base_idx, idx)};
+                    precomputed_modalities.emplace_back(
+                        sum(ws),
+                        weighted_sum(ys, ws)
+                    );
+                } else {
+                    precomputed_modalities.emplace_back(
+                        static_cast<Float>(idx - base_idx),
+                        sum(ys)
+                    );
+                }
+                total_size += precomputed_modalities.back().first;
+                total_sum += precomputed_modalities.back().second;
+            }
+        } else {
+            last_idx = 0;
+        }
+        left_sum = left_sum_of_weights = 0;
+        if(current_node->data->is_weighted()) {
+            right_sum = weighted_sum(y, w);
+            right_sum_of_weights = sum(w);
+        } else {
+            right_sum = sum(y);
+            right_sum_of_weights = static_cast<Float>(y.size());
+        }
+        self._new_feature();
+    }
+
+    /**
+     * @brief Evaluate the loss after splitting the current node according to
+     * the value of the
+     */
     inline Float evaluate(const Array<Float>& y, size_t idx) const {
         return self._evaluate(y, idx);
     }
-    inline Float evaluate(const Array<Float>& y, const Array<Float>& w, size_t idx) const {
+    inline Float evaluate(const Array<Float>& y,
+                          const Array<Float>& w, size_t idx) const {
         return self._evaluate(y, w, idx);
     }
     inline Float evaluate(uint64_t mask) const {
         return self._evaluate(mask);
     }
-    inline Float evaluate(
-            uint64_t mask, std::tuple<Float , Float, Float, Float>& res) const {
+    inline Float evaluate(uint64_t mask, SplitPred<Float>& res) const {
         return self._evaluate(mask, res);
     }
     inline Float evaluate() {
@@ -660,38 +737,92 @@ public:
         return evaluate();
     }
 
+    /**
+     * @brief Notify the loss that a given node has been split.
+     */
     inline void add_expanded_node(const Node<Float>* node) {
+        assert(not node->is_leaf());
         self._add_expanded_node(node);
     }
 
+    /**
+     * @brief Provide the root of the tree.
+     *
+     * @param node The root of the tree.
+     */
     inline void set_root(Node<Float>* node) {
         self._set_root(node);
     }
 };
 
+#define __USING_CLAUSE_TREE_LOSS \
+protected: \
+    using ParentLoss::self; \
+    using ParentLoss::dataset; \
+    using ParentLoss::current_node; \
+    using ParentLoss::precomputed_modalities; \
+    using ParentLoss::last_idx; \
+    using ParentLoss::total_size; \
+    using ParentLoss::total_sum; \
+    using ParentLoss::left_sum; \
+    using ParentLoss::left_sum_of_weights; \
+    using ParentLoss::right_sum; \
+    using ParentLoss::right_sum_of_weights; \
+public: \
+    using typename ParentLoss::Float;
+
+#define DEFINE_TREE_LOSS(NAME) \
+template <std::floating_point FloatType> \
+class NAME final : public TreeBasedLoss<FloatType, NAME<FloatType>> { \
+private: \
+    typedef TreeBasedLoss<FloatType, NAME<FloatType>> ParentLoss; \
+protected: \
+    friend class TreeBasedLoss<FloatType, NAME<FloatType>>; \
+    __USING_CLAUSE_TREE_LOSS
+
 template <std::floating_point Float>
 using Coord = std::pair<Float, Float>;
 
+
+template <std::floating_point Float>
+struct QuantileFunctionEntry final {
+    const Node<Float>* node;
+    Float N;
+    Float pred;
+
+    QuantileFunctionEntry() = delete;
+
+    QuantileFunctionEntry(const Node<Float>* node, Float N, Float pred):
+            node{node}, N{N}, pred{pred} {
+    }
+
+    explicit QuantileFunctionEntry(const Node<Float>* node):
+            node{node}, N{node->sum_of_weights}, pred{node->pred} {
+    }
+
+    inline QuantileFunctionEntry& operator=(const Node<Float>* node) {
+        this->node = node;
+        this->N = node->sum_of_weights;
+        this->pred = node->pred;
+        return *this;
+    }
+};
+
 template <std::floating_point FloatType, bool allow_crossing=true>
-class LorenzCurveError final : public TreeBasedLoss<
+class GiniIndexLorenzCurve final : public TreeBasedLoss<
                                     FloatType,
-                                    LorenzCurveError<FloatType, allow_crossing>
+                                    GiniIndexLorenzCurve<FloatType, allow_crossing>
                           > {
     typedef TreeBasedLoss<
         FloatType,
-        LorenzCurveError<FloatType, allow_crossing>
+        GiniIndexLorenzCurve<FloatType, allow_crossing>
     > ParentLoss;
-public:
-    using typename ParentLoss::Float;
-    LorenzCurveError(const Dataset<Float>& data):
-            dataset{data}, curve() {
-    }
 
-    struct QuantileFunctionEntry {
-        const Node<Float>* node;
-        Float N;
-        Float pred;
-    };
+    __USING_CLAUSE_TREE_LOSS
+public:
+    GiniIndexLorenzCurve(const Dataset<Float>& data):
+            ParentLoss(data), curve() {
+    }
 
     class LorenzCurve final {
     public:
@@ -813,7 +944,7 @@ public:
             return ret;
         }
     private:
-        std::vector<QuantileFunctionEntry> quantiles;
+        std::vector<QuantileFunctionEntry<Float>> quantiles;
         std::vector<Coord<Float>> _precomputed_lc;
         bool precomputed{false};
         Float sum_of_weights;
@@ -853,10 +984,10 @@ public:
         template <typename It>
         inline void _insert(
                 It first, It last,
-                QuantileFunctionEntry const& entry) {
+                QuantileFunctionEntry<Float> const& entry) {
             auto it{std::find_if(
                 first, last,
-                [&entry](const QuantileFunctionEntry& x) -> bool {
+                [&entry](const QuantileFunctionEntry<Float>& x) -> bool {
                     return x.pred >= entry.pred;
                 }
             )};
@@ -865,22 +996,11 @@ public:
         }
     };
 protected:
-    friend class TreeBasedLoss<Float, LorenzCurveError<Float, allow_crossing>>;
+    friend class TreeBasedLoss<Float, GiniIndexLorenzCurve<Float, allow_crossing>>;
 
-    const Dataset<Float>& dataset;
-
-    const Node<Float>* current_node{nullptr};
-    Float left_sum{0};
-    Float left_sum_of_weights{0};
-    Float right_sum_of_weights{0};
-    Float right_sum{0};
-    size_t last_idx{0};
     size_t nb_modalities{0};
-    Float total_size{0};
-    Float total_sum{0};
 
     LorenzCurve curve;
-    std::vector<std::pair<Float, Float>> _mod_N_pred;
 
     static inline Float _evaluate(const LorenzCurve& curve) {
         return static_cast<Float>(1) - 2*curve.area();
@@ -891,6 +1011,9 @@ protected:
     }
 
     inline void _set_root(Node<Float>* node) override final {
+        // Reset the Lorenz curve by calling its constructor.
+        // // Call the destructor first!
+        curve.~LorenzCurve();
         new(&curve) LorenzCurve(node);
     }
 
@@ -898,146 +1021,260 @@ protected:
         curve.split_node(node);
     }
 
-    virtual inline void _new_node(const Node<Float>* node) override final {
-        current_node = node;
-    }
-
-    virtual inline void _new_feature(size_t j) override final {
-        auto const& [Xj, y, p, w, indices] = current_node->data->sorted_Xypw(j);
-        left_sum = 0;
-        if(current_node->data->is_weighted()) {
-            right_sum = weighted_sum(y, w);
-            right_sum_of_weights = sum(w);
-        } else {
-            right_sum = sum(y);
-            right_sum_of_weights = static_cast<Float>(y.size());
-        }
-        left_sum_of_weights = 0;
-        last_idx = 0;
-        total_size = 0;
-        total_sum = 0;
-        if(current_node->data->is_categorical(j)) {
-            auto [values, counts] = unique(Xj);
-            auto sumcounts{cumsum<size_t>(counts)};
-            nb_modalities = counts.size();
-            _mod_N_pred.clear();
-            for(size_t k{0}; k < nb_modalities; ++k) {
-                size_t base_idx{(k == 0) ? 0 : sumcounts[k-1]};
-                size_t idx{sumcounts[k]};
-                if(current_node->data->is_weighted()) {
-                    auto ws{w.view(base_idx, idx)};
-                    _mod_N_pred.emplace_back(
-                        sum(ws),
-                        weighted_sum(y.view(base_idx, idx), ws)
-                    );
-                } else {
-                    _mod_N_pred.emplace_back(
-                        static_cast<Float>(idx - base_idx),
-                        sum(y.view(base_idx, idx))
-                    );
-                }
-                total_size += _mod_N_pred.back().first;
-                total_sum += _mod_N_pred.back().second;
-            }
-        } else {
-            _mod_N_pred.clear();
-            nb_modalities = 0;
-        }
-    }
-
     virtual inline Float _evaluate(
             const Array<Float>& y,
             const Array<Float>& w,
             size_t idx) const override final {
-        LorenzCurve splitted_curve(curve);
+        LorenzCurve split_curve(curve);
         auto ws{w.view(last_idx, idx)};
         auto diff{weighted_sum<Float>(y.view(last_idx, idx), ws)};
-        auto _this{const_cast<LorenzCurveError<Float, allow_crossing>*>(this)};
+        auto _this{const_cast<GiniIndexLorenzCurve<Float, allow_crossing>*>(this)};
         _this->last_idx = idx;
         _this->left_sum  += diff;
         _this->right_sum -= diff;
         auto diff_weights{sum(ws)};
         _this->left_sum_of_weights  += diff_weights;
         _this->right_sum_of_weights -= diff_weights;
-        splitted_curve.split_node(
-            current_node,
-            left_sum_of_weights, left_sum / left_sum_of_weights,
-            right_sum_of_weights, right_sum / right_sum_of_weights
-        );
-        if constexpr(not allow_crossing) {
-            if(splitted_curve.crosses(curve))
-                return -std::numeric_limits<Float>::infinity();
-        }
-        return _evaluate(splitted_curve);
+        return _split_and_evaluate(current_node, split_curve);
     }
 
     virtual inline Float _evaluate(
             const Array<Float>& y,
             size_t idx) const override final {
-        LorenzCurve splitted_curve(curve);
+        LorenzCurve split_curve(curve);
         auto diff{sum(y.view(last_idx, idx))};
-        auto _this{const_cast<LorenzCurveError<Float, allow_crossing>*>(this)};
+        auto _this{const_cast<GiniIndexLorenzCurve<Float, allow_crossing>*>(this)};
         _this->last_idx = idx;
         _this->left_sum += diff;
         _this->right_sum -= diff;
         _this->left_sum_of_weights  = static_cast<Float>(idx);
         _this->right_sum_of_weights = static_cast<Float>(y.size() - idx);
-        splitted_curve.split_node(
-            current_node,
-            left_sum_of_weights, left_sum / left_sum_of_weights,
-            right_sum_of_weights, right_sum / right_sum_of_weights
-        );
-        if constexpr(not allow_crossing) {
-            if(splitted_curve.crosses(curve))
-                return -std::numeric_limits<Float>::infinity();
-        }
-        return _evaluate(splitted_curve);
+        return _split_and_evaluate(current_node, split_curve);
     }
     virtual inline Float _evaluate(uint64_t mask) override final {
         return _evaluate(mask, nullptr);
     }
 
     virtual inline Float _evaluate(
-            uint64_t mask,
-            std::tuple<Float, Float, Float, Float>& res) override final {
+            uint64_t mask, SplitPred<Float>& res) override final {
         return _evaluate(mask, &res);
     }
 
-    Float _evaluate(
-            uint64_t mask,
-            std::tuple<Float, Float, Float, Float>* res) {
-        LorenzCurve splitted_curve(curve);
+    Float _evaluate(uint64_t mask, SplitPred<Float>* res) {
+        LorenzCurve split_curve(curve);
         left_sum = 0;
-        right_sum = 0;
-        Float left_size{0};
-        Float right_size{0};
+        left_sum_of_weights = 0;
         for(size_t mod_idx{0}; mod_idx < nb_modalities; ++mod_idx) {
             if(mask & (1ull << mod_idx)) {
-                left_sum  += _mod_N_pred[mod_idx].second;
-                left_size += _mod_N_pred[mod_idx].first;
+                left_sum += precomputed_modalities[mod_idx].second;
+                left_sum_of_weights += precomputed_modalities[mod_idx].first;
             }
         }
-        right_size = total_size - left_size;
+        right_sum_of_weights = total_size - left_sum_of_weights;
         right_sum = total_sum - left_sum;
-        splitted_curve.split_node(
+        split_curve.split_node(
             current_node,
-            left_size, left_sum / left_size,
-            right_size, right_sum / right_size
+            left_sum_of_weights, left_sum / left_sum_of_weights,
+            right_sum_of_weights, right_sum / right_sum_of_weights
         );
         if(res != nullptr) [[likely]] {
-            std::get<0>(*res) = left_size;
-            std::get<1>(*res) = left_sum / left_size;
-            std::get<2>(*res) = right_size;
-            std::get<3>(*res) = right_sum / right_size;
+            res->left_size = left_sum_of_weights;
+            res->left_pred = left_sum / left_sum_of_weights;
+            res->right_size = right_sum_of_weights;
+            res->right_pred = right_sum / right_sum_of_weights;
         }
-        return _evaluate(splitted_curve);
+        return _evaluate(split_curve);
+    }
+
+private:
+    inline Float _split_and_evaluate(const Node<Float>* node, LorenzCurve& curve) const {
+        curve.split_node(
+            node,
+            left_sum_of_weights, left_sum / left_sum_of_weights,
+            right_sum_of_weights, right_sum / right_sum_of_weights
+        );
+        if constexpr(not allow_crossing) {
+            if(curve.crosses(curve))
+                return -std::numeric_limits<Float>::infinity();
+        }
+        return _evaluate(curve);
     }
 };
 
 template <std::floating_point Float>
-using NonCrossingLorenzCurveError = LorenzCurveError<Float, false>;
+using NonCrossingLorenzCurveError = GiniIndexLorenzCurve<Float, false>;
 template <std::floating_point Float>
-using CrossingLorenzCurveError = LorenzCurveError<Float, true>;
+using CrossingLorenzCurveError = GiniIndexLorenzCurve<Float, true>;
+
+template <std::floating_point Float>
+static inline auto _consecutive_lcs(const std::vector<Node<Float>*>& nodes) {
+    typename GiniIndexLorenzCurve<Float>::LorenzCurve lc(nodes.front());
+    std::vector<typename Cart::Loss::GiniIndexLorenzCurve<Float>::LorenzCurve> ret;
+    ret.push_back(lc);
+    for(const Node<Float>* node : nodes) {
+        lc.split_node(node);
+        ret.push_back(lc);
+    }
+    return ret;
+}
+
+DEFINE_TREE_LOSS(GiniIndexABL)
+public:
+    GiniIndexABL(const Dataset<Float>& data):
+            ParentLoss(data), tot_weight(data.weighted_size()) {
+    }
+
+protected:
+    virtual void _set_root(Node<Float>* node) override final {
+        nodes.emplace_back(node);
+    }
+
+    virtual void _new_node() override final {
+        assert(current_node != nullptr);
+        base_value = get_value() - get_contribution_of(current_node);
+    }
+
+    virtual void _add_expanded_node(const Node<Float>* node) override final {
+        auto& entry{get_entry(node)};
+        entry = node->left_child;
+        nodes.emplace_back(node->right_child);
+        precomputed = false;
+    }
+
+    inline Float get_value() const {
+        if(not precomputed)  [[unlikely]] {
+            Float value{0};
+            for(auto it1{nodes.begin()}; it1 != nodes.end(); ++it1)
+                for(auto it2{nodes.begin()}; it2 != it1; ++it2)
+                    value += it1->N * it2->N * std::fabs(it1->pred - it2->pred);
+            value *= 2 / (tot_weight * tot_weight);
+            const_cast<GiniIndexABL*>(this)->precomputed = true;
+            const_cast<GiniIndexABL*>(this)->value = value;
+        }
+        return value;
+    }
+
+    virtual inline Float _evaluate() const override final {
+        //return static_cast<Float>(1) - 2*get_value();
+        return get_value();
+    }
+
+    virtual inline Float _evaluate(
+            const Array<Float>& y,
+            size_t idx) const override final {
+        auto diff{sum(y.view(last_idx, idx))};
+        auto _this{const_cast<GiniIndexABL*>(this)};
+        _this->last_idx = idx;
+        _this->left_sum += diff;
+        _this->right_sum -= diff;
+        _this->left_sum_of_weights  = static_cast<Float>(idx);
+        _this->right_sum_of_weights = static_cast<Float>(y.size() - idx);
+        return __evaluate();
+    }
+
+    virtual inline Float _evaluate(
+            const Array<Float>& y,
+            const Array<Float>& w,
+            size_t idx) const override final {
+        auto ws{w.view(last_idx, idx)};
+        auto diff{weighted_sum(y.view(last_idx, idx), ws)};
+        auto _this{const_cast<GiniIndexABL*>(this)};
+        _this->last_idx = idx;
+        _this->left_sum += diff;
+        _this->right_sum -= diff;
+        auto diff_weights{sum(ws)};
+        _this->left_sum_of_weights  += diff_weights;
+        _this->right_sum_of_weights -= diff_weights;
+        return __evaluate();
+    }
+
+    virtual inline Float _evaluate(uint64_t mask) override final {
+        return _evaluate(mask, nullptr);
+    }
+
+    virtual inline Float _evaluate(
+            uint64_t mask, SplitPred<Float>& res) override final {
+        return _evaluate(mask, &res);
+    }
+
+    Float _evaluate(uint64_t mask, SplitPred<Float>* res) {
+        const auto nb_modalities{precomputed_modalities.size()};
+        left_sum = 0;
+        left_sum_of_weights = 0;
+        for(size_t mod_idx{0}; mod_idx < nb_modalities; ++mod_idx) {
+            if(mask & (1ull << mod_idx)) {
+                left_sum += precomputed_modalities[mod_idx].second;
+                left_sum_of_weights += precomputed_modalities[mod_idx].first;
+            }
+        }
+        right_sum_of_weights = total_size - left_sum_of_weights;
+        right_sum = total_sum - left_sum;
+        if(res != nullptr) [[likely]] {
+            res->left_size = left_sum_of_weights;
+            res->left_pred = left_sum / left_sum_of_weights;
+            res->right_size = right_sum_of_weights;
+            res->right_pred = right_sum / right_sum_of_weights;
+        }
+        return __evaluate();
+    }
+
+    bool precomputed{false};
+    Float value{0};
+    Float base_value{0};
+    Float tot_weight{0};
+
+    std::vector<QuantileFunctionEntry<Float>> nodes;
+
+private:
+    inline Float __evaluate() const {
+        auto pred_left{left_sum / left_sum_of_weights};
+        auto pred_right{right_sum / right_sum_of_weights};
+        auto value{base_value
+            + get_contribution_of(current_node, left_sum_of_weights, pred_left)
+            + get_contribution_of(current_node, right_sum_of_weights, pred_right)
+            + 2 * left_sum_of_weights * right_sum_of_weights
+                * std::fabs(pred_left - pred_right)
+                / (tot_weight * tot_weight)};
+        return value;
+        // return 1 - 2*value;
+    }
+
+    inline Float get_contribution_of(const Node<Float>* node) const {
+        Float ret{0};
+        auto const& entry{get_entry(node)};
+        auto prop_leaf{entry.N};
+        auto pred_leaf{entry.pred};
+        for(const auto& entry : nodes)
+            if(entry.node != current_node)  [[likely]]
+                ret += entry.N * std::fabs(pred_leaf - entry.pred);
+        return 2*prop_leaf*ret / (tot_weight*tot_weight);
+    }
+
+    inline Float get_contribution_of(
+            const Node<Float>* node,
+            Float prop, Float pred) const {
+        Float ret{0};
+        for(const auto& entry : nodes)
+            if(entry.node != node)  [[likely]]
+            ret += entry.N * std::fabs(pred - entry.pred);
+        return 2*prop*ret / (tot_weight*tot_weight);
+    }
+
+    inline QuantileFunctionEntry<Float>& get_entry(const Node<Float>* node) {
+        auto it{std::find_if(
+            nodes.begin(), nodes.end(), [node](const auto& n) -> bool {
+                return n.node == node;
+            }
+        )};
+        assert(it != nodes.end());
+        return *it;
+    }
+
+    inline const QuantileFunctionEntry<Float>& get_entry(
+            const Node<Float>* node) const {
+        return const_cast<GiniIndexABL*>(this)->get_entry(node);
+    }
+END_OF_DEFINITION
 
 template <typename LossType, typename Float=typename LossType::Float>
 concept _NodeBasedLoss = requires {
@@ -1071,5 +1308,9 @@ struct CanBeBestFirst {
 
 }  // Cart::Loss::
 }  // Cart::
+
+#undef DEFINE_NODE_LOSS
+#undef DEFINE_TREE_LOSS
+#undef END_OF_DEFINITION
 
 #endif

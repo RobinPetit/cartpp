@@ -4,17 +4,16 @@ CXX=clang++
 OPENMPFLAG=-fopenmp=libomp
 FLAGS=-std=c++20 -Isrc/ $(shell ./get_includes.py) -Wall -Wextra -Wdisabled-optimization -Wundef -Wpedantic -MMD
 
-CXXFLAGS=-O3 ${FLAGS}
-#-DNDEBUG
+CXXFLAGS=-O3 ${FLAGS} -DNDEBUG
 #-Rpass-analysis=loop-vectorize
-# CXXFLAGS=-g -pg -O3 ${FLAGS}
+# CXXFLAGS=-g -pg -O0 ${FLAGS}
 # -fsanitize=address
 # -static-libasan
 
 LINK_FLAGS=-fno-strict-aliasing
 # -fsanitize=address
 #
-DOC_DIR=doc
+DOC_DIR=doc/cartpp
 REMOTE_ORIGIN=git@github.com:RobinPetit/cartpp.git
 SRC=$(wildcard src/*.hpp)
 

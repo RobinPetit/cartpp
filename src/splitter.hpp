@@ -532,7 +532,7 @@ private:
                 break;
             if(idx < config.minobs)
                 continue;
-            if(data->size() - idx < config.minobs)
+            if(data->size() < idx + config.minobs)
                 break;
             Float new_loss;
             if constexpr(weighted)
@@ -587,10 +587,10 @@ private:
         auto max_mask{1ull << (nb_modalities-1)};
         for(uint64_t _mask{1ull}; _mask < max_mask; ++_mask) {
             auto mask{_mask};
-            std::tuple<Float, Float, Float, Float> _split_res;
+            Loss::SplitPred<Float> _split_res;
             Float new_loss{loss.evaluate(mask, _split_res)};
-            if(std::get<0>(_split_res) < config.minobs or
-               std::get<2>(_split_res) < config.minobs)
+            if(_split_res.left_size < config.minobs or
+               _split_res.right_size < config.minobs)
                 continue;
             Float dloss{new_loss - current_loss};
             if(dloss > best_dloss) {
@@ -659,6 +659,7 @@ public:
             : _find_split<false>()
         };
         if(not split.valid) [[unlikely]] {
+            std::cerr << "INVALID SPLIT\n";
             // Make sure there is at least the root
             if(container.size() == 1 and container.back()->is_root()) {
                 auto ret{container.back()};
@@ -815,10 +816,10 @@ private:
         auto max_mask{1ull << (nb_modalities-1)};
         for(uint64_t _mask{1ull}; _mask < max_mask; ++_mask) {
             auto mask{_mask};
-            std::tuple<Float, Float, Float, Float> _split_res;
+            Loss::SplitPred<Float> _split_res;
             Float new_loss{loss.evaluate(mask, _split_res)};
-            if(std::get<0>(_split_res) < config.minobs or
-               std::get<2>(_split_res) < config.minobs)
+            if(_split_res.left_size < config.minobs or
+               _split_res.right_size < config.minobs)
                 continue;
             Float dloss{new_loss - current_loss};
             if(dloss > best_dloss) {

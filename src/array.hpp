@@ -16,6 +16,9 @@ namespace Cart {
 template <typename T>
 class Array;
 
+template <typename T>
+static inline std::ostream& operator<<(std::ostream&, const Array<T>&);
+
 inline Array<size_t> where(const Array<bool>&);
 
 /**
@@ -202,12 +205,10 @@ public:
      */
     Array(const std::vector<T>& vector):
             data{
-                //new T[vector.size()]
                 static_cast<T*>(::operator new(sizeof(T) * vector.size()))
             }, n{vector.size()}, owns_data{true} {
         for(size_t i{0}; i < size(); ++i)
-            std::ignore = new (&data[i]) T(vector[i]);
-            // data[i] = vector[i];
+            std::construct_at(data+i, vector[i]);
     }
 
     /**
@@ -389,7 +390,7 @@ public:
     Array<T> operator[](const Array<size_t>& indices) const {
         T* ptr{static_cast<T*>(::operator new(sizeof(T) * indices.size()))};
         for(size_t i{0}; i < indices.size(); ++i)
-            std::ignore = new (&ptr[i]) T((*this)[indices[i]]);
+            std::construct_at(ptr+i, (*this)[indices[i]]);
         Array<T> ret (std::make_pair(ptr, indices.size()));
         return ret;
     }
@@ -407,7 +408,7 @@ public:
      * @throws std::runtime_error if `mask.size() != this->size()`.
      */
     inline Array<T> operator[](const Array<bool>& mask) const {
-        if(size() != mask.size())
+        if(size() != mask.size())  [[unlikely]]
             throw std::runtime_error("Size mismatch");
         return (*this)[where(mask)];
     }
@@ -422,9 +423,9 @@ public:
      * @throws std::runtime_error if `other.size() != this->size()`.
      */
     inline void assign(const Array<T>& other) {
-        if(size() != other.size())
+        if(size() != other.size())  [[unlikely]]
             throw std::runtime_error("Size mismatch");
-        fill_copy(data, other.data, size());
+        fill_copy(other.data, data, size());
     }
 
     /**
@@ -681,7 +682,7 @@ static inline Array<T> cumsum(const Array<T>& array) {
 template <typename T>
 static inline std::ostream& operator<<(std::ostream& os, const Array<T>& array) {
     for(auto const& x : array)
-        os << x;
+        os << x << ", ";
     return os;
 }
 
