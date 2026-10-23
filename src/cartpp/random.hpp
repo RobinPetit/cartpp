@@ -16,6 +16,12 @@ static inline void permutation(Array<T>& array) {
     std::shuffle(array.begin(), array.end(), rng);
 }
 
+template <typename T>
+static inline void permutation(Array<T>& array, std::uint_fast32_t seed) {
+    std::mt19937 rng(seed);
+    std::shuffle(array.begin(), array.end(), rng);
+}
+
 static inline Array<size_t> permutation(size_t n) {
     Array<size_t> ret{range(0, n)};
     permutation(ret);

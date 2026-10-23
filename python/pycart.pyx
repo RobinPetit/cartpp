@@ -12,6 +12,7 @@ from libcpp.memory cimport shared_ptr, make_shared
 from libcpp.string cimport string
 from libcpp.utility cimport move, pair
 from libcpp.vector cimport vector
+from libc.stdint cimport uint_fast32_t
 
 import threading
 from joblib import Parallel as _Parallel, delayed
@@ -24,16 +25,16 @@ ctypedef float CART_FLOAT32
 ctypedef double CART_FLOAT64
 ctypedef ptrdiff_t CART_PTR_T
 
-cdef extern from "array.hpp" namespace "Cart" nogil:
+cdef extern from "<cartpp/array.hpp>" namespace "Cart" nogil:
     cdef cppclass Array[T]:
         pass
 
-cdef extern from "splitter.hpp" namespace "Cart" nogil:
+cdef extern from "<cartpp/splitter.hpp>" namespace "Cart" nogil:
     cdef enum class NodeSelector(int):
         BEST_FIRST,
         DEPTH_FIRST
 
-cdef extern from "node.hpp" namespace "Cart" nogil:
+cdef extern from "<cartpp/node.hpp>" namespace "Cart" nogil:
     cdef struct CartNode32 "Cart::Node<CART_FLOAT32>":
         size_t id
         size_t depth
@@ -67,7 +68,7 @@ cdef extern from "node.hpp" namespace "Cart" nogil:
         size_t left_modalities
         size_t right_modalities
 
-cdef extern from "tree.hpp" namespace "Cart" nogil:
+cdef extern from "<cartpp/tree.hpp>" namespace "Cart" nogil:
     cdef struct __anonymous_struct_nb:
         double alpha
     cdef union __anonymous_union0:
@@ -98,6 +99,7 @@ cdef extern from "_pycart.hpp" nogil:
     np.ndarray __Dataset_get_w[T](const void*)
     np.ndarray __Dataset_get_p[T](const void*)
     void CALL_SPLIT[T](void*, pair[void*, void*]*, double, bool)
+    void CALL_SEEDED_SPLIT[T](void*, pair[void*, void*]*, double, uint_fast32_t)
     string __Dataset_get_ith_modality_of_j[T](void*, int, int)
 
     cdef enum class __FloatingPoint(int):
@@ -274,15 +276,25 @@ cdef class Dataset:
         elif self.dtype == np.float64:
             return __Dataset_get_w[CART_FLOAT64](self.ptr)
 
-    def split(self, frac: float, shuffle: bool=True) -> tuple[Dataset, Dataset]:
+    def split(self, frac: float, shuffle: bool=True, seed: int = None) -> tuple[Dataset, Dataset]:
+        '''
+        Split the dataset in two
+        '''
         assert 0. < frac < 1.
+        cdef pair[void*, void*] tmp
+        if seed is not None:
+            assert shuffle, "Cannot seed a non-shuffled split"
+            if self.dtype == np.float32:
+                CALL_SEEDED_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, seed)
+            else:
+                CALL_SEEDED_SPLIT[CART_FLOAT64](self.ptr, &tmp, frac, seed)
+        else:
+            if self.dtype == np.float32:
+                CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
+            else:
+                CALL_SPLIT[CART_FLOAT64](self.ptr, &tmp, frac, shuffle)
         cdef Dataset dataset1 = Dataset.__new__(Dataset)
         cdef Dataset dataset2 = Dataset.__new__(Dataset)
-        cdef pair[void*, void*] tmp
-        if self.dtype == np.float32:
-            CALL_SPLIT[CART_FLOAT32](self.ptr, &tmp, frac, shuffle)
-        else:
-            CALL_SPLIT[CART_FLOAT64](self.ptr, &tmp, frac, shuffle)
         dataset1.ptr = tmp.first
         dataset2.ptr = tmp.second
         dataset1.dtype = dataset2.dtype = self.dtype

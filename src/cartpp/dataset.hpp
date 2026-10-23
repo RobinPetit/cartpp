@@ -441,6 +441,25 @@ public:
     }
 
     /**
+     * @brief Split the Dataset in two parts of specified size.
+     *
+     * @param frac The fraction (in [0, 1]) of the dataset to end up in the first one.
+     * @param seed The seed to initialize the random number generator.
+     */
+    inline std::pair<Dataset<Float>*, Dataset<Float>*> split(
+            double frac, std::uint_fast32_t seed) const {
+        auto size1{static_cast<size_t>(size() * frac)};
+        auto indices{range(0, size())};
+        Random::permutation(indices, seed);
+        auto left_indices{indices.view(0, size1)};
+        auto right_indices{indices.view(size1, size())};
+        return std::make_pair(
+            at(left_indices),
+            at(right_indices)
+        );
+    }
+
+    /**
      * @brief Split the Dataset in two parts depending on the value of a
      * non-categorical covariate.
      *

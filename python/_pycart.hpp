@@ -4,9 +4,9 @@
 #include <concepts>
 #include <type_traits>
 
-#include "dataset.hpp"
-#include "loss.hpp"
-#include "tree.hpp"
+#include <cartpp/dataset.hpp>
+#include <cartpp/loss.hpp>
+#include <cartpp/tree.hpp>
 
 enum class __FloatingPoint {
     FLOAT32,
@@ -152,8 +152,15 @@ _DEFINE_DATASET_GET_(w)
 
 template <std::floating_point Float>
 static inline void CALL_SPLIT(
-        void* dataset, std::pair<void*, void*>* tmp, double frac, bool shuffle) {
-    *tmp = std::move(static_cast<Cart::Dataset<Float>*>(dataset)->split(frac, shuffle));
+        void* dataset, std::pair<void*, void*>* ret, double frac, bool shuffle) {
+    *ret = std::move(static_cast<Cart::Dataset<Float>*>(dataset)->split(frac, shuffle));
+}
+
+template <std::floating_point Float>
+static inline void CALL_SEEDED_SPLIT(
+        void* dataset, std::pair<void*, void*>* ret, double frac,
+        std::uint_fast32_t seed) {
+    *ret = std::move(static_cast<Cart::Dataset<Float>*>(dataset)->split(frac, seed));
 }
 
 template <std::floating_point Float>
