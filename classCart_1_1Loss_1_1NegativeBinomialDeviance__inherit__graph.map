@@ -1,0 +1,11 @@
+<map id="Cart::Loss::NegativeBinomialDeviance&lt; FloatType &gt;" name="Cart::Loss::NegativeBinomialDeviance&lt; FloatType &gt;">
+<area shape="rect" id="Node000001" title="Negative binomial (of parameter ) deviance." alt="" coords="1064,37,1275,77"/>
+<area shape="rect" id="Node000002" href="$classCart_1_1Loss_1_1impl_1_1NonNegativeIntegerLoss.html" title=" " alt="" coords="765,30,1015,85"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1028,55,1064,55,1064,60,1028,60"/>
+<area shape="rect" id="Node000003" href="$classCart_1_1Loss_1_1NodeBasedLoss.html" title="Abstract wrapper for losses to be used during the construction of a regression/classification tree." alt="" coords="282,5,479,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="493,29,742,44,765,46,765,51,741,49,493,34"/>
+<area shape="rect" id="Node000004" href="$classCart_1_1Loss_1_1impl_1_1NonNegativeIntegerLoss.html" title="Generic abstract class for loss when ." alt="" coords="252,69,509,109"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="523,88,630,86,741,79,765,76,765,81,742,84,630,91,523,93"/>
+<area shape="rect" id="Node000005" href="$classCart_1_1Loss_1_1NodeBasedLoss.html" title="Abstract wrapper for losses to be used during the construction of a regression/classification tree." alt="" coords="5,69,203,109"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="216,87,252,87,252,92,216,92"/>
+</map>

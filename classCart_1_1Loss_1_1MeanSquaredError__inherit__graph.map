@@ -1,0 +1,7 @@
+<map id="Cart::Loss::MeanSquaredError&lt; FloatType &gt;" name="Cart::Loss::MeanSquaredError&lt; FloatType &gt;">
+<area shape="rect" id="Node000001" title="Mean squared error." alt="" coords="12,227,227,267"/>
+<area shape="rect" id="Node000002" href="$classCart_1_1Loss_1_1NodeBasedLoss.html" title=" " alt="" coords="5,123,233,177"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="122,191,122,226,117,226,117,191"/>
+<area shape="rect" id="Node000003" href="$classCart_1_1Loss_1_1NodeBasedLoss.html" title="Abstract wrapper for losses to be used during the construction of a regression/classification tree." alt="" coords="21,5,218,45"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="122,59,122,122,117,122,117,59"/>
+</map>
